@@ -13,43 +13,74 @@ import { ScreenCropSelector } from './components/ScreenCropSelector';
 import { TimelineEditor } from './components/TimelineEditor';
 import { createDemoStreams, DemoStreamsController } from './demoStreams';
 import {
+  AlertCircle,
   Camera,
   CameraOff,
   CircleDot,
-  Crop,
   Download,
-  ExternalLink,
   FlipHorizontal,
-  Layers,
   LayoutTemplate,
   Monitor,
   MonitorOff,
   PictureInPicture2,
-  Radio,
   Sliders,
-  Sparkles,
   Square,
-  Video,
   Wand2,
 } from 'lucide-react';
 
 type StudioMode = 'live' | 'edit';
 
-function getSupportedMimeType(): { mimeType: string; ext: string } {
-  const candidates = [
-    { mimeType: 'video/mp4;codecs=avc1,mp4a.40.2', ext: 'mp4' },
-    { mimeType: 'video/mp4;codecs=avc1', ext: 'mp4' },
-    { mimeType: 'video/mp4', ext: 'mp4' },
-    { mimeType: 'video/webm;codecs=vp9,opus', ext: 'webm' },
-    { mimeType: 'video/webm;codecs=vp8,opus', ext: 'webm' },
-    { mimeType: 'video/webm', ext: 'webm' },
-  ];
+/**
+ * Safely creates a MediaRecorder for a given MediaStream, choosing a compatible
+ * codec based on whether the stream includes audio tracks, and falling back to
+ * the browser's default MediaRecorder config if a specific codec is rejected.
+ */
+function createSafeRecorder(
+  stream: MediaStream,
+  videoBitsPerSecond = 8_000_000
+): { recorder: MediaRecorder; mimeType: string; ext: string } {
+  const hasAudio = stream.getAudioTracks().some((t) => t.readyState === 'live');
+
+  const candidates = hasAudio
+    ? [
+        { mimeType: 'video/webm;codecs=vp9,opus', ext: 'webm' },
+        { mimeType: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+        { mimeType: 'video/mp4;codecs=avc1,mp4a.40.2', ext: 'mp4' },
+        { mimeType: 'video/mp4', ext: 'mp4' },
+        { mimeType: 'video/webm', ext: 'webm' },
+      ]
+    : [
+        { mimeType: 'video/webm;codecs=vp9', ext: 'webm' },
+        { mimeType: 'video/webm;codecs=vp8', ext: 'webm' },
+        { mimeType: 'video/mp4;codecs=avc1', ext: 'mp4' },
+        { mimeType: 'video/mp4', ext: 'mp4' },
+        { mimeType: 'video/webm', ext: 'webm' },
+      ];
+
   for (const c of candidates) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(c.mimeType)) {
-      return c;
+      try {
+        const recorder = new MediaRecorder(stream, {
+          mimeType: c.mimeType,
+          videoBitsPerSecond,
+        });
+        return { recorder, mimeType: c.mimeType, ext: c.ext };
+      } catch {
+        // Continue to next candidate
+      }
     }
   }
-  return { mimeType: '', ext: 'webm' };
+
+  // Fallback to default browser MediaRecorder with no options
+  const fallbackRecorder = new MediaRecorder(stream);
+  const actualMime = fallbackRecorder.mimeType || 'video/webm';
+  const ext = actualMime.includes('mp4') ? 'mp4' : 'webm';
+  return { recorder: fallbackRecorder, mimeType: actualMime, ext };
+}
+
+function isStreamLive(stream: MediaStream | null): boolean {
+  if (!stream) return false;
+  return stream.active && stream.getVideoTracks().some((t) => t.readyState === 'live');
 }
 
 export function App() {
@@ -65,12 +96,13 @@ export function App() {
   const [isDemoActive, setIsDemoActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
   // Post-recording raw track URLs & timeline segments
   const [rawScreenUrl, setRawScreenUrl] = useState<string | null>(null);
   const [rawCamUrl, setRawCamUrl] = useState<string | null>(null);
   const [instantCompositeUrl, setInstantCompositeUrl] = useState<string | null>(null);
-  const [recordedExt, setRecordedExt] = useState<string>('mp4');
+  const [recordedExt, setRecordedExt] = useState<string>('webm');
 
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
@@ -127,7 +159,7 @@ export function App() {
     return liveConfig;
   }, [mode, activeEditSegment, liveConfig]);
 
-  // Update config helper (updates liveConfig in live mode + appends/updates keyframe if recording, or updates selected segment in edit mode)
+  // Update config helper
   const updateConfig = useCallback(
     (updater: (prev: SegmentConfig) => SegmentConfig) => {
       if (mode === 'edit') {
@@ -148,7 +180,6 @@ export function App() {
             const elapsed = (performance.now() - recordStartPerfRef.current) / 1000;
             const log = recordedSegmentsLogRef.current;
             const last = log[log.length - 1];
-            // If layout changed after at least 0.4s, create a new segment automatically during live recording
             if (last.config.layout !== next.layout && elapsed - last.startTime > 0.4) {
               last.endTime = elapsed;
               log.push({
@@ -169,16 +200,56 @@ export function App() {
   );
 
   // Stop demo streams if running
-  const stopDemoIfActive = () => {
+  const stopDemoIfActive = useCallback(() => {
     if (demoControllerRef.current) {
       demoControllerRef.current.stop();
       demoControllerRef.current = null;
       setIsDemoActive(false);
     }
-  };
+  }, []);
+
+  // Synchronously initialize and play Demo Feeds
+  const activateDemoFeeds = useCallback(() => {
+    if (demoControllerRef.current) {
+      demoControllerRef.current.stop();
+      demoControllerRef.current = null;
+    }
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    camStreamRef.current?.getTracks().forEach((t) => t.stop());
+
+    const demo = createDemoStreams();
+    demoControllerRef.current = demo;
+    screenStreamRef.current = demo.screenStream;
+    camStreamRef.current = demo.camStream;
+
+    if (liveScreenVideoRef.current) {
+      liveScreenVideoRef.current.srcObject = demo.screenStream;
+      liveScreenVideoRef.current.play().catch(() => {});
+    }
+    if (liveCamVideoRef.current) {
+      liveCamVideoRef.current.srcObject = demo.camStream;
+      liveCamVideoRef.current.play().catch(() => {});
+    }
+
+    setIsDemoActive(true);
+    setHasScreen(true);
+    setHasCam(true);
+  }, []);
+
+  // Auto-load demo feeds on mount (StrictMode-safe)
+  useEffect(() => {
+    activateDemoFeeds();
+    return () => {
+      if (demoControllerRef.current) {
+        demoControllerRef.current.stop();
+        demoControllerRef.current = null;
+      }
+    };
+  }, [activateDemoFeeds]);
 
   // Start/Stop Screen Share
   const handleToggleScreen = async () => {
+    setErrorBanner(null);
     if (hasScreen && !isDemoActive) {
       screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = null;
@@ -188,13 +259,20 @@ export function App() {
     }
 
     try {
-      stopDemoIfActive();
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           frameRate: { ideal: 60, max: 60 },
         },
         audio: true,
       });
+
+      if (isDemoActive) {
+        stopDemoIfActive();
+        setHasCam(false);
+        camStreamRef.current = null;
+        if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
+      }
+
       screenStreamRef.current = stream;
       if (liveScreenVideoRef.current) {
         liveScreenVideoRef.current.srcObject = stream;
@@ -213,6 +291,7 @@ export function App() {
 
   // Start/Stop Webcam + Mic
   const handleToggleCam = async () => {
+    setErrorBanner(null);
     if (hasCam && !isDemoActive) {
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = null;
@@ -222,7 +301,6 @@ export function App() {
     }
 
     try {
-      stopDemoIfActive();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 1280 },
@@ -234,6 +312,14 @@ export function App() {
           noiseSuppression: true,
         },
       });
+
+      if (isDemoActive) {
+        stopDemoIfActive();
+        setHasScreen(false);
+        screenStreamRef.current = null;
+        if (liveScreenVideoRef.current) liveScreenVideoRef.current.srcObject = null;
+      }
+
       camStreamRef.current = stream;
       if (liveCamVideoRef.current) {
         liveCamVideoRef.current.srcObject = stream;
@@ -242,11 +328,13 @@ export function App() {
       setHasCam(true);
     } catch (err) {
       console.warn('Webcam selection cancelled or failed:', err);
+      setErrorBanner('Could not access camera/microphone. Check browser permissions.');
     }
   };
 
-  // Activate Synthetic Demo Feeds
-  const handleToggleDemoFeeds = async () => {
+  // Toggle Synthetic Demo Feeds
+  const handleToggleDemoFeeds = () => {
+    setErrorBanner(null);
     if (isDemoActive) {
       stopDemoIfActive();
       screenStreamRef.current = null;
@@ -257,38 +345,9 @@ export function App() {
       setHasCam(false);
       return;
     }
-
-    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    camStreamRef.current?.getTracks().forEach((t) => t.stop());
-
-    const demo = createDemoStreams();
-    demoControllerRef.current = demo;
-    screenStreamRef.current = demo.screenStream;
-    camStreamRef.current = demo.camStream;
-
-    if (liveScreenVideoRef.current) {
-      liveScreenVideoRef.current.srcObject = demo.screenStream;
-      await liveScreenVideoRef.current.play().catch(() => {});
-    }
-    if (liveCamVideoRef.current) {
-      liveCamVideoRef.current.srcObject = demo.camStream;
-      await liveCamVideoRef.current.play().catch(() => {});
-    }
-
-    setIsDemoActive(true);
-    setHasScreen(true);
-    setHasCam(true);
+    activateDemoFeeds();
     setMode('live');
   };
-
-  // Auto-load demo feeds on first mount so the canvas looks alive immediately
-  useEffect(() => {
-    handleToggleDemoFeeds();
-    return () => {
-      stopDemoIfActive();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Main 60fps 9:16 Canvas Render Loop
   useEffect(() => {
@@ -339,133 +398,157 @@ export function App() {
   useEffect(() => {
     if (!isRecording) return;
     const interval = window.setInterval(() => {
-      setRecordingSeconds(( performance.now() - recordStartPerfRef.current ) / 1000);
+      setRecordingSeconds((performance.now() - recordStartPerfRef.current) / 1000);
     }, 100);
     return () => window.clearInterval(interval);
   }, [isRecording]);
 
   // Start Dual-Track + Live Composite Recording
   const handleStartRecording = async () => {
-    if (!hasScreen && !hasCam) {
-      await handleToggleDemoFeeds();
-    }
+    try {
+      setErrorBanner(null);
 
-    const { mimeType, ext } = getSupportedMimeType();
-    setRecordedExt(ext);
-
-    const screenChunks: BlobPart[] = [];
-    const camChunks: BlobPart[] = [];
-    const compositeChunks: BlobPart[] = [];
-
-    recordStartPerfRef.current = performance.now();
-    setRecordingSeconds(0);
-    recordedSegmentsLogRef.current = [
-      {
-        id: `seg-${Date.now()}`,
-        startTime: 0,
-        endTime: 0,
-        config: structuredClone(liveConfig),
-      },
-    ];
-
-    const options = mimeType ? { mimeType, videoBitsPerSecond: 8_000_000 } : undefined;
-
-    let pendingStops = 0;
-    let totalDurationSec = 0;
-
-    const finalizeRecording = () => {
-      pendingStops -= 1;
-      if (pendingStops > 0) return;
-
-      const finalDuration = Math.max(1, totalDurationSec);
-      const finalSegments = recordedSegmentsLogRef.current.map((s, idx, arr) =>
-        idx === arr.length - 1 ? { ...s, endTime: finalDuration } : s
-      );
-
-      if (screenChunks.length > 0) {
-        const sBlob = new Blob(screenChunks, { type: mimeType || 'video/webm' });
-        setRawScreenUrl(URL.createObjectURL(sBlob));
-      } else {
-        setRawScreenUrl(null);
+      // Ensure at least one stream is live; if neither is live, activate demo feeds
+      if (!isStreamLive(screenStreamRef.current) && !isStreamLive(camStreamRef.current)) {
+        activateDemoFeeds();
       }
 
-      if (camChunks.length > 0) {
-        const cBlob = new Blob(camChunks, { type: mimeType || 'video/webm' });
-        setRawCamUrl(URL.createObjectURL(cBlob));
-      } else {
-        setRawCamUrl(null);
-      }
+      const screenChunks: BlobPart[] = [];
+      const camChunks: BlobPart[] = [];
+      const compositeChunks: BlobPart[] = [];
 
-      if (compositeChunks.length > 0) {
-        const compBlob = new Blob(compositeChunks, { type: mimeType || 'video/webm' });
-        setInstantCompositeUrl(URL.createObjectURL(compBlob));
-      }
+      let screenMime = 'video/webm';
+      let camMime = 'video/webm';
+      let compMime = 'video/webm';
+      let compExt = 'webm';
 
-      setDuration(finalDuration);
-      setTrimStart(0);
-      setTrimEnd(finalDuration);
-      setCurrentTime(0);
-      setSegments(finalSegments);
-      setSelectedSegmentId(finalSegments[0]?.id || null);
-      setMode('edit');
-    };
-
-    // 1. Raw Screen Track Recorder
-    if (screenStreamRef.current) {
-      pendingStops += 1;
-      const sRec = new MediaRecorder(screenStreamRef.current, options);
-      sRec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) screenChunks.push(e.data);
-      };
-      sRec.onstop = finalizeRecording;
-      sRec.start(200);
-      screenRecorderRef.current = sRec;
-    }
-
-    // 2. Raw Camera + Mic Track Recorder
-    if (camStreamRef.current) {
-      pendingStops += 1;
-      const cRec = new MediaRecorder(camStreamRef.current, options);
-      cRec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) camChunks.push(e.data);
-      };
-      cRec.onstop = finalizeRecording;
-      cRec.start(200);
-      camRecorderRef.current = cRec;
-    }
-
-    // 3. Live Composite 9:16 Canvas Recorder (for instant 0-wait download option)
-    if (compositeCanvasRef.current) {
-      pendingStops += 1;
-      const canvasStream = compositeCanvasRef.current.captureStream(60);
-      // Attach mic audio if present
-      const audioTracks = [
-        ...(camStreamRef.current?.getAudioTracks() || []),
-        ...(screenStreamRef.current?.getAudioTracks() || []),
+      recordStartPerfRef.current = performance.now();
+      setRecordingSeconds(0);
+      recordedSegmentsLogRef.current = [
+        {
+          id: `seg-${Date.now()}`,
+          startTime: 0,
+          endTime: 0,
+          config: structuredClone(liveConfig),
+        },
       ];
-      if (audioTracks.length > 0) {
-        canvasStream.addTrack(audioTracks[0]);
-      }
-      const compRec = new MediaRecorder(canvasStream, options);
-      compRec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) compositeChunks.push(e.data);
-      };
-      compRec.onstop = () => {
-        totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
-        finalizeRecording();
-      };
-      compRec.start(200);
-      compositeRecorderRef.current = compRec;
-    }
 
-    setIsRecording(true);
+      let pendingStops = 0;
+      let totalDurationSec = 0;
+
+      const finalizeRecording = () => {
+        pendingStops -= 1;
+        if (pendingStops > 0) return;
+
+        const finalDuration = Math.max(0.8, totalDurationSec);
+        const finalSegments = recordedSegmentsLogRef.current.map((s, idx, arr) =>
+          idx === arr.length - 1 ? { ...s, endTime: finalDuration } : s
+        );
+
+        if (screenChunks.length > 0) {
+          const sBlob = new Blob(screenChunks, { type: screenMime });
+          setRawScreenUrl(URL.createObjectURL(sBlob));
+        } else {
+          setRawScreenUrl(null);
+        }
+
+        if (camChunks.length > 0) {
+          const cBlob = new Blob(camChunks, { type: camMime });
+          setRawCamUrl(URL.createObjectURL(cBlob));
+        } else {
+          setRawCamUrl(null);
+        }
+
+        if (compositeChunks.length > 0) {
+          const compBlob = new Blob(compositeChunks, { type: compMime });
+          setInstantCompositeUrl(URL.createObjectURL(compBlob));
+        }
+
+        setRecordedExt(compExt);
+        setDuration(finalDuration);
+        setTrimStart(0);
+        setTrimEnd(finalDuration);
+        setCurrentTime(0);
+        setSegments(finalSegments);
+        setSelectedSegmentId(finalSegments[0]?.id || null);
+        setMode('edit');
+      };
+
+      // 1. Raw Screen Track Recorder
+      if (isStreamLive(screenStreamRef.current) && screenStreamRef.current) {
+        const { recorder: sRec, mimeType } = createSafeRecorder(screenStreamRef.current);
+        screenMime = mimeType;
+        pendingStops += 1;
+        sRec.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) screenChunks.push(e.data);
+        };
+        sRec.onstop = finalizeRecording;
+        sRec.start(200);
+        screenRecorderRef.current = sRec;
+      }
+
+      // 2. Raw Camera + Mic Track Recorder
+      if (isStreamLive(camStreamRef.current) && camStreamRef.current) {
+        const { recorder: cRec, mimeType } = createSafeRecorder(camStreamRef.current);
+        camMime = mimeType;
+        pendingStops += 1;
+        cRec.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) camChunks.push(e.data);
+        };
+        cRec.onstop = finalizeRecording;
+        cRec.start(200);
+        camRecorderRef.current = cRec;
+      }
+
+      // 3. Live Composite 9:16 Canvas Recorder (for instant 0-wait download option)
+      if (compositeCanvasRef.current) {
+        const canvasStream = compositeCanvasRef.current.captureStream(30);
+        const liveAudioTracks = [
+          ...(camStreamRef.current?.getAudioTracks() || []),
+          ...(screenStreamRef.current?.getAudioTracks() || []),
+        ].filter((t) => t.readyState === 'live');
+
+        if (liveAudioTracks.length > 0) {
+          canvasStream.addTrack(liveAudioTracks[0]);
+        }
+
+        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream);
+        compMime = mimeType;
+        compExt = ext;
+        pendingStops += 1;
+
+        compRec.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) compositeChunks.push(e.data);
+        };
+        compRec.onstop = () => {
+          totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
+          finalizeRecording();
+        };
+        compRec.start(200);
+        compositeRecorderRef.current = compRec;
+      }
+
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      setErrorBanner(
+        err instanceof Error
+          ? `Recording failed to start: ${err.message}`
+          : 'Recording failed to start.'
+      );
+      setIsRecording(false);
+    }
   };
 
   const handleStopRecording = () => {
     setIsRecording(false);
     [screenRecorderRef, camRecorderRef, compositeRecorderRef].forEach((ref) => {
-      if (ref.current && ref.current.state !== 'inactive') {
-        ref.current.stop();
+      try {
+        if (ref.current && ref.current.state !== 'inactive') {
+          ref.current.stop();
+        }
+      } catch (err) {
+        console.warn('Error stopping recorder:', err);
       }
       ref.current = null;
     });
@@ -497,12 +580,15 @@ export function App() {
     return () => cancelAnimationFrame(rafId);
   }, [mode, trimStart, trimEnd]);
 
-  const handleSeek = useCallback((time: number) => {
-    const clamped = Math.max(0, Math.min(duration || 100, time));
-    setCurrentTime(clamped);
-    if (editScreenVideoRef.current) editScreenVideoRef.current.currentTime = clamped;
-    if (editCamVideoRef.current) editCamVideoRef.current.currentTime = clamped;
-  }, [duration]);
+  const handleSeek = useCallback(
+    (time: number) => {
+      const clamped = Math.max(0, Math.min(duration || 100, time));
+      setCurrentTime(clamped);
+      if (editScreenVideoRef.current) editScreenVideoRef.current.currentTime = clamped;
+      if (editCamVideoRef.current) editCamVideoRef.current.currentTime = clamped;
+    },
+    [duration]
+  );
 
   const handleTogglePlay = useCallback(async () => {
     if (mode !== 'edit') return;
@@ -527,7 +613,9 @@ export function App() {
     if (mode !== 'edit') return;
     const splitTime = currentTime;
     setSegments((prev) => {
-      const idx = prev.findIndex((s) => splitTime > s.startTime + 0.25 && splitTime < s.endTime - 0.25);
+      const idx = prev.findIndex(
+        (s) => splitTime > s.startTime + 0.2 && splitTime < s.endTime - 0.2
+      );
       if (idx === -1) return prev;
       const target = prev[idx];
       const firstHalf: TimelineSegment = {
@@ -575,8 +663,7 @@ export function App() {
     handleSeek(trimStart);
     await new Promise((r) => setTimeout(r, 150));
 
-    const { mimeType, ext } = getSupportedMimeType();
-    const stream = compositeCanvasRef.current.captureStream(60);
+    const stream = compositeCanvasRef.current.captureStream(30);
 
     // Capture audio track from recorded camera/screen video if available
     try {
@@ -585,17 +672,17 @@ export function App() {
       };
       if (cVid && typeof cVid.captureStream === 'function') {
         const cStream = cVid.captureStream();
-        cStream.getAudioTracks().forEach((t) => stream.addTrack(t));
+        cStream
+          .getAudioTracks()
+          .filter((t) => t.readyState === 'live')
+          .forEach((t) => stream.addTrack(t));
       }
     } catch {
       // Audio capture fallback ignored if not present
     }
 
     const chunks: BlobPart[] = [];
-    const recorder = new MediaRecorder(
-      stream,
-      mimeType ? { mimeType, videoBitsPerSecond: 10_000_000 } : undefined
-    );
+    const { recorder, mimeType, ext } = createSafeRecorder(stream, 10_000_000);
 
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
@@ -639,7 +726,7 @@ export function App() {
     setExportProgress(0);
   };
 
-  // Floating Picture-in-Picture (PiP) Monitor so user can see 9:16 preview while working in other apps
+  // Floating Picture-in-Picture (PiP) Monitor
   const handleTogglePiP = async () => {
     try {
       if (document.pictureInPictureElement) {
@@ -656,13 +743,10 @@ export function App() {
     }
   };
 
-  // Keyboard shortcuts: 1, 2, 3 to switch layouts; Space to play/pause in edit mode; S to split segment
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
       if (e.key === '1') {
@@ -687,7 +771,7 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [mode, updateConfig, handleTogglePlay, handleSplitAtPlayhead]);
 
-  // Direct 9:16 Canvas Interaction (Drag Circular Bubble or Drag 30/70 Split Line)
+  // Direct 9:16 Canvas Interaction
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = compositeCanvasRef.current;
     if (!canvas) return;
@@ -713,7 +797,6 @@ export function App() {
         return;
       }
     } else {
-      // Check if near the 30/70 split divider line
       if (Math.abs(normY - currentConfig.splitRatio) < 0.05) {
         e.currentTarget.setPointerCapture(e.pointerId);
         canvasDragRef.current = {
@@ -734,11 +817,17 @@ export function App() {
     if (canvasDragRef.current.type === 'bubble') {
       const r = currentConfig.bubbleRadius;
       const rY = (r * CANVAS_WIDTH) / CANVAS_HEIGHT;
-      const nextX = Math.max(r + 0.02, Math.min(1 - r - 0.02, normX - canvasDragRef.current.offsetX));
-      const nextY = Math.max(rY + 0.02, Math.min(1 - rY - 0.02, normY - canvasDragRef.current.offsetY));
+      const nextX = Math.max(
+        r + 0.02,
+        Math.min(1 - r - 0.02, normX - canvasDragRef.current.offsetX)
+      );
+      const nextY = Math.max(
+        rY + 0.02,
+        Math.min(1 - rY - 0.02, normY - canvasDragRef.current.offsetY)
+      );
       updateConfig((c) => ({ ...c, bubbleX: nextX, bubbleY: nextY }));
     } else if (canvasDragRef.current.type === 'split') {
-      const nextRatio = Math.max(0.18, Math.min(0.60, normY));
+      const nextRatio = Math.max(0.18, Math.min(0.6, normY));
       updateConfig((c) => ({ ...c, splitRatio: Number(nextRatio.toFixed(2)) }));
     }
   };
@@ -795,7 +884,7 @@ export function App() {
             <button
               type="button"
               onClick={handleToggleScreen}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
                 hasScreen && !isDemoActive
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                   : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
@@ -806,13 +895,15 @@ export function App() {
               ) : (
                 <MonitorOff className="w-3.5 h-3.5 text-zinc-400" />
               )}
-              <span>{hasScreen && !isDemoActive ? 'Screen Shared' : 'Select Screen / Window'}</span>
+              <span>
+                {hasScreen && !isDemoActive ? 'Screen Shared' : 'Select Screen / Window'}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={handleToggleCam}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
                 hasCam && !isDemoActive
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                   : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
@@ -829,7 +920,7 @@ export function App() {
             <button
               type="button"
               onClick={handleToggleDemoFeeds}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
                 isDemoActive
                   ? 'bg-violet-500/20 border-violet-500/50 text-violet-200'
                   : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400'
@@ -854,7 +945,11 @@ export function App() {
               </a>
             )}
             <span className="text-xs text-zinc-400">
-              Tip: Press <kbd className="px-1.5 py-0.5 bg-zinc-900 rounded border border-zinc-700 text-zinc-200">S</kbd> on the timeline below to split & change layouts after recording!
+              Tip: Press{' '}
+              <kbd className="px-1.5 py-0.5 bg-zinc-900 rounded border border-zinc-700 text-zinc-200">
+                S
+              </kbd>{' '}
+              on the timeline below to split & change layouts after recording!
             </span>
           </div>
         )}
@@ -864,15 +959,15 @@ export function App() {
           <button
             type="button"
             onClick={handleTogglePiP}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition cursor-pointer"
             title="Pop out a floating Always-on-Top 9:16 preview window while you work in other apps"
           >
             <PictureInPicture2 className="w-3.5 h-3.5 text-violet-400" />
             <span className="hidden sm:inline">Floating PiP</span>
           </button>
 
-          {mode === 'live' && (
-            !isRecording ? (
+          {mode === 'live' &&
+            (!isRecording ? (
               <button
                 type="button"
                 onClick={handleStartRecording}
@@ -893,10 +988,26 @@ export function App() {
                   {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')})
                 </span>
               </button>
-            )
-          )}
+            ))}
         </div>
       </header>
+
+      {/* Error Banner if any */}
+      {errorBanner && (
+        <div className="bg-rose-950/90 border-b border-rose-800 px-5 py-2 text-xs text-rose-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{errorBanner}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorBanner(null)}
+            className="text-rose-300 hover:text-white underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Workspace Area */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -931,7 +1042,7 @@ export function App() {
                             preset === 'region-focus' ? 'custom-region' : c.screenFitMode,
                         }))
                       }
-                      className={`w-full text-left p-3 rounded-xl border transition flex items-start justify-between gap-3 ${
+                      className={`w-full text-left p-3 rounded-xl border transition flex items-start justify-between gap-3 cursor-pointer ${
                         isActive
                           ? 'bg-violet-600/15 border-violet-500/70 shadow-sm'
                           : 'bg-zinc-900/70 hover:bg-zinc-900 border-zinc-800/90'
@@ -975,7 +1086,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => updateConfig((c) => ({ ...c, regionHeadMode: 'split' }))}
-                    className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border transition ${
+                    className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                       currentConfig.regionHeadMode === 'split'
                         ? 'bg-violet-600/25 border-violet-500 text-white'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -986,7 +1097,7 @@ export function App() {
                   <button
                     type="button"
                     onClick={() => updateConfig((c) => ({ ...c, regionHeadMode: 'bubble' }))}
-                    className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border transition ${
+                    className={`py-1.5 px-2.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                       currentConfig.regionHeadMode === 'bubble'
                         ? 'bg-violet-600/25 border-violet-500 text-white'
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -998,7 +1109,7 @@ export function App() {
               </div>
             )}
 
-            {/* Split Ratio Slider (Shown for Format 1 or Format 3 in split mode) */}
+            {/* Split Ratio Slider */}
             {(currentConfig.layout === 'split-top-cam' ||
               (currentConfig.layout === 'region-focus' &&
                 currentConfig.regionHeadMode === 'split')) && (
@@ -1022,12 +1133,12 @@ export function App() {
                   className="w-full accent-violet-500"
                 />
                 <div className="flex gap-1.5 pt-0.5">
-                  {[0.25, 0.30, 0.35, 0.45].map((r) => (
+                  {[0.25, 0.3, 0.35, 0.45].map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => updateConfig((c) => ({ ...c, splitRatio: r }))}
-                      className={`flex-1 py-1 rounded text-[11px] font-mono border transition ${
+                      className={`flex-1 py-1 rounded text-[11px] font-mono border transition cursor-pointer ${
                         Math.abs(currentConfig.splitRatio - r) < 0.01
                           ? 'bg-violet-600/30 border-violet-500 text-violet-200'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -1040,7 +1151,7 @@ export function App() {
               </div>
             )}
 
-            {/* Bubble Controls (Shown for Format 2 or Format 3 in bubble mode) */}
+            {/* Bubble Controls */}
             {(currentConfig.layout === 'circle-bubble' ||
               (currentConfig.layout === 'region-focus' &&
                 currentConfig.regionHeadMode === 'bubble')) && (
@@ -1070,7 +1181,7 @@ export function App() {
                     <button
                       type="button"
                       onClick={() => updateConfig((c) => ({ ...c, bubbleShape: 'circle' }))}
-                      className={`px-2.5 py-1 rounded-lg text-xs border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${
                         currentConfig.bubbleShape === 'circle'
                           ? 'bg-violet-600/25 border-violet-500 text-white'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -1081,7 +1192,7 @@ export function App() {
                     <button
                       type="button"
                       onClick={() => updateConfig((c) => ({ ...c, bubbleShape: 'rounded' }))}
-                      className={`px-2.5 py-1 rounded-lg text-xs border transition ${
+                      className={`px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${
                         currentConfig.bubbleShape === 'rounded'
                           ? 'bg-violet-600/25 border-violet-500 text-white'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -1105,7 +1216,7 @@ export function App() {
                         onClick={() =>
                           updateConfig((c) => ({ ...c, bubbleX: pos.x, bubbleY: pos.y }))
                         }
-                        className="px-2 py-1 rounded bg-zinc-950 hover:bg-zinc-800 text-[10px] font-mono text-zinc-300 border border-zinc-800"
+                        className="px-2 py-1 rounded bg-zinc-950 hover:bg-zinc-800 text-[10px] font-mono text-zinc-300 border border-zinc-800 cursor-pointer"
                         title={`Snap bubble to ${pos.label}`}
                       >
                         {pos.label}
@@ -1135,7 +1246,7 @@ export function App() {
                           screenFitMode: opt.id as SegmentConfig['screenFitMode'],
                         }))
                       }
-                      className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition ${
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-medium border transition cursor-pointer ${
                         currentConfig.screenFitMode === opt.id
                           ? 'bg-violet-600/25 border-violet-500 text-white'
                           : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
@@ -1149,7 +1260,7 @@ export function App() {
             )}
           </div>
 
-          {/* Section 3: Interactive Screen Region Cropper (Format 3 or Custom Crop) */}
+          {/* Section 3: Interactive Screen Region Cropper */}
           <ScreenCropSelector
             screenVideo={
               mode === 'live'
@@ -1186,7 +1297,7 @@ export function App() {
               <button
                 type="button"
                 onClick={() => updateConfig((c) => ({ ...c, mirrorCam: !c.mirrorCam }))}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition ${
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] border transition cursor-pointer ${
                   currentConfig.mirrorCam
                     ? 'bg-violet-600/20 border-violet-500/50 text-violet-200'
                     : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -1248,7 +1359,7 @@ export function App() {
                   key={bg.id}
                   type="button"
                   onClick={() => updateConfig((c) => ({ ...c, backgroundStyle: bg.id }))}
-                  className={`py-1 px-1.5 rounded text-[10px] font-medium border transition ${
+                  className={`py-1 px-1.5 rounded text-[10px] font-medium border transition cursor-pointer ${
                     currentConfig.backgroundStyle === bg.id
                       ? 'bg-violet-600/25 border-violet-500 text-white'
                       : 'bg-zinc-950 border-zinc-800 text-zinc-400'
@@ -1263,7 +1374,6 @@ export function App() {
 
         {/* Center Stage: Live 9:16 Vertical Canvas Preview */}
         <main className="flex-1 min-w-0 flex flex-col items-center justify-center p-4 bg-zinc-950 relative overflow-hidden">
-          {/* Subtle radial glow behind phone canvas */}
           <div className="absolute w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
 
           {/* Interactive 9:16 Phone Frame Container */}
@@ -1293,17 +1403,18 @@ export function App() {
           {/* Helper Footer under Canvas */}
           <div className="mt-2.5 flex items-center gap-4 text-[11px] text-zinc-400">
             <span>
-              <strong className="text-zinc-200">Interactive Canvas:</strong> Drag the camera bubble or split divider directly on the 9:16 preview
+              <strong className="text-zinc-200">Interactive Canvas:</strong> Drag the camera bubble
+              or split divider directly on the 9:16 preview
             </span>
             <span>•</span>
             <span>
-              Output: <strong className="text-zinc-200 font-mono">1080 × 1920 (60fps)</strong>
+              Output: <strong className="text-zinc-200 font-mono">1080 × 1920</strong>
             </span>
           </div>
         </main>
       </div>
 
-      {/* Bottom Post-Recording Multi-Track Timeline Editor (Visible after recording) */}
+      {/* Bottom Post-Recording Multi-Track Timeline Editor */}
       {mode === 'edit' && (
         <TimelineEditor
           duration={duration}
