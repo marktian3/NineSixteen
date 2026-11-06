@@ -860,34 +860,24 @@ export function App() {
       {rawCamUrl && <video ref={editCamVideoRef} src={rawCamUrl} playsInline className="hidden" />}
 
       {/* Top Navigation & Capture Bar */}
-      <header className="h-15 shrink-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur px-5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-600/20 font-bold text-sm tracking-tighter">
+      <header className="h-13 shrink-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur px-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center font-bold text-xs tracking-tighter">
             9:16
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-bold text-sm tracking-tight text-white">NineSixteen</h1>
-              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">
-                {mode === 'live' ? 'Live Studio' : 'Post-Recording Editor'}
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              Vertical Screen & Webcam Recorder + Non-Destructive Timeline
-            </p>
-          </div>
+          <span className="font-semibold text-sm tracking-tight text-white">NineSixteen</span>
         </div>
 
         {/* Center Capture Source Controls */}
         {mode === 'live' ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={handleToggleScreen}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                 hasScreen && !isDemoActive
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
               }`}
             >
               {hasScreen && !isDemoActive ? (
@@ -895,18 +885,16 @@ export function App() {
               ) : (
                 <MonitorOff className="w-3.5 h-3.5 text-zinc-400" />
               )}
-              <span>
-                {hasScreen && !isDemoActive ? 'Screen Shared' : 'Select Screen / Window'}
-              </span>
+              <span>Screen</span>
             </button>
 
             <button
               type="button"
               onClick={handleToggleCam}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                 hasCam && !isDemoActive
                   ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
               }`}
             >
               {hasCam && !isDemoActive ? (
@@ -914,56 +902,47 @@ export function App() {
               ) : (
                 <CameraOff className="w-3.5 h-3.5 text-zinc-400" />
               )}
-              <span>{hasCam && !isDemoActive ? 'Camera Active' : 'Enable Webcam + Mic'}</span>
+              <span>Camera</span>
             </button>
 
             <button
               type="button"
               onClick={handleToggleDemoFeeds}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                 isDemoActive
                   ? 'bg-violet-500/20 border-violet-500/50 text-violet-200'
                   : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400'
               }`}
-              title="Simulated coding screen + animated webcam feed for instant testing"
+              title="Toggle simulated demo feeds"
             >
               <Wand2 className="w-3.5 h-3.5 text-violet-400" />
-              <span>{isDemoActive ? 'Demo Feeds Active' : 'Try Demo Feeds'}</span>
+              <span>Demo</span>
             </button>
           </div>
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {instantCompositeUrl && (
               <a
                 href={instantCompositeUrl}
                 download={`NineSixteen-LiveCut.${recordedExt}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 transition"
-                title="Download the exact live-switched video immediately without waiting for re-render"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Instant Download (Live Cut)</span>
+                <span>Download Live Cut</span>
               </a>
             )}
-            <span className="text-xs text-zinc-400">
-              Tip: Press{' '}
-              <kbd className="px-1.5 py-0.5 bg-zinc-900 rounded border border-zinc-700 text-zinc-200">
-                S
-              </kbd>{' '}
-              on the timeline below to split & change layouts after recording!
-            </span>
           </div>
         )}
 
         {/* Right Action Buttons: Floating PiP & Record Start/Stop */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleTogglePiP}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition cursor-pointer"
-            title="Pop out a floating Always-on-Top 9:16 preview window while you work in other apps"
+            className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition cursor-pointer"
+            title="Floating Picture-in-Picture Preview"
           >
-            <PictureInPicture2 className="w-3.5 h-3.5 text-violet-400" />
-            <span className="hidden sm:inline">Floating PiP</span>
+            <PictureInPicture2 className="w-4 h-4 text-violet-400" />
           </button>
 
           {mode === 'live' &&
@@ -971,21 +950,21 @@ export function App() {
               <button
                 type="button"
                 onClick={handleStartRecording}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/30 transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/25 transition cursor-pointer"
               >
-                <CircleDot className="w-4 h-4 fill-current" />
-                <span>Start Recording</span>
+                <CircleDot className="w-3.5 h-3.5 fill-current" />
+                <span>Record</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={handleStopRecording}
-                className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/40 animate-pulse transition cursor-pointer"
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/40 animate-pulse transition cursor-pointer"
               >
-                <Square className="w-3.5 h-3.5 fill-current" />
+                <Square className="w-3 h-3 fill-current" />
                 <span className="font-mono">
-                  Stop ({Math.floor(recordingSeconds / 60)}:
-                  {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')})
+                  {Math.floor(recordingSeconds / 60)}:
+                  {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')}
                 </span>
               </button>
             ))}
