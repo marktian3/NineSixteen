@@ -1259,11 +1259,11 @@ export function App() {
         </aside>
 
         {/* Center Stage: Live 9:16 Vertical Canvas Preview */}
-        <main className="flex-1 min-w-0 flex flex-col items-center justify-center p-4 bg-zinc-950 relative overflow-hidden">
+        <main className="flex-1 min-w-0 flex flex-col items-center justify-center p-6 bg-zinc-950 relative overflow-hidden">
           <div className="absolute w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
 
           {/* Interactive 9:16 Phone Frame Container */}
-          <div className="relative h-full max-h-[82vh] aspect-[9/16] rounded-[28px] p-2 bg-zinc-900/90 border border-zinc-800 shadow-2xl flex flex-col">
+          <div className="relative h-full max-h-[86vh] aspect-[9/16] rounded-[28px] p-2 bg-zinc-900/90 border border-zinc-800 shadow-2xl flex flex-col">
             <div className="relative w-full h-full rounded-[20px] overflow-hidden bg-black">
               <canvas
                 ref={compositeCanvasRef}
@@ -1278,24 +1278,12 @@ export function App() {
 
               {/* Live Recording Badge Overlay (UI only, not baked into canvas) */}
               {isRecording && (
-                <div className="absolute top-3 left-3 flex items-center gap-2 px-2.5 py-1 rounded-full bg-rose-600/90 text-white text-[11px] font-semibold shadow-lg pointer-events-none">
+                <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-600/90 text-white text-[11px] font-semibold shadow-lg pointer-events-none">
                   <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                  <span>REC • Dual Raw Tracks</span>
+                  <span>REC</span>
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Helper Footer under Canvas */}
-          <div className="mt-2.5 flex items-center gap-4 text-[11px] text-zinc-400">
-            <span>
-              <strong className="text-zinc-200">Interactive Canvas:</strong> Drag the camera bubble
-              or split divider directly on the 9:16 preview
-            </span>
-            <span>•</span>
-            <span>
-              Output: <strong className="text-zinc-200 font-mono">1080 × 1920</strong>
-            </span>
           </div>
         </main>
       </div>
