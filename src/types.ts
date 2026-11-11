@@ -52,7 +52,7 @@ export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   splitRatio: 0.30,
   bubbleX: 0.76,
   bubbleY: 0.78,
-  bubbleRadius: 0.19,
+  bubbleRadius: 0.22,
   bubbleShape: 'circle',
   bubbleBorderColor: '#8b5cf6',
   screenCrop: {

@@ -974,7 +974,7 @@ export function App() {
                   <div className="flex justify-between text-xs">
                     <span className="text-zinc-400">Size</span>
                     <span className="font-mono text-zinc-200">
-                      {Math.round(currentConfig.bubbleRadius * 100)}%
+                      {Math.round(((currentConfig.bubbleRadius - 0.12) / (0.32 - 0.12)) * 100)}%
                     </span>
                   </div>
                   <input
@@ -990,46 +990,43 @@ export function App() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex gap-1">
-                    {(['circle', 'rounded'] as const).map((shape) => (
-                      <button
-                        key={shape}
-                        type="button"
-                        onClick={() => updateConfig((c) => ({ ...c, bubbleShape: shape }))}
-                        className={`px-2.5 py-1 rounded-md text-xs border transition cursor-pointer capitalize ${
-                          currentConfig.bubbleShape === shape
-                            ? 'bg-violet-600/25 border-violet-500 text-white'
-                            : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                        }`}
-                      >
-                        {shape === 'rounded' ? 'Squircle' : 'Circle'}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    {[
-                      { label: 'TL', x: 0.24, y: 0.16 },
-                      { label: 'TR', x: 0.76, y: 0.16 },
-                      { label: 'BL', x: 0.24, y: 0.78 },
-                      { label: 'BR', x: 0.76, y: 0.78 },
-                    ].map((pos) => (
-                      <button
-                        key={pos.label}
-                        type="button"
-                        onClick={() =>
-                          updateConfig((c) => ({ ...c, bubbleX: pos.x, bubbleY: pos.y }))
-                        }
-                        className="px-1.5 py-1 rounded bg-zinc-950 hover:bg-zinc-800 text-[10px] font-mono text-zinc-400 border border-zinc-800 cursor-pointer"
-                      >
-                        {pos.label}
-                      </button>
-                    ))}
-                  </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(['circle', 'rounded'] as const).map((shape) => (
+                    <button
+                      key={shape}
+                      type="button"
+                      onClick={() => updateConfig((c) => ({ ...c, bubbleShape: shape }))}
+                      className={`py-1 rounded-lg text-xs border transition cursor-pointer capitalize ${
+                        currentConfig.bubbleShape === shape
+                          ? 'bg-violet-600/25 border-violet-500 text-white'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {shape === 'rounded' ? 'Squircle' : 'Circle'}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
+
+            {/* Canvas Padding Slider */}
+            <div className="space-y-1 pt-1 border-t border-zinc-800/60">
+              <div className="flex justify-between text-xs">
+                <span className="text-zinc-400">Padding</span>
+                <span className="font-mono text-zinc-200">{currentConfig.canvasPadding}px</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={32}
+                step={2}
+                value={currentConfig.canvasPadding}
+                onChange={(e) =>
+                  updateConfig((c) => ({ ...c, canvasPadding: parseInt(e.target.value, 10) }))
+                }
+                className="w-full accent-violet-500"
+              />
+            </div>
           </div>
 
           {/* Screen Box: Single Source of Truth for Screen Framing & Cropping (Demo fallback when !hasScreen) */}
@@ -1112,24 +1109,6 @@ export function App() {
                   value={currentConfig.camZoom}
                   onChange={(e) =>
                     updateConfig((c) => ({ ...c, camZoom: parseFloat(e.target.value) }))
-                  }
-                  className="w-full accent-violet-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-zinc-400">Padding</span>
-                  <span className="font-mono text-zinc-300">{currentConfig.canvasPadding}px</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={32}
-                  step={2}
-                  value={currentConfig.canvasPadding}
-                  onChange={(e) =>
-                    updateConfig((c) => ({ ...c, canvasPadding: parseInt(e.target.value, 10) }))
                   }
                   className="w-full accent-violet-500"
                 />
