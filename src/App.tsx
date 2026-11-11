@@ -19,11 +19,8 @@ import {
   CircleDot,
   Download,
   FlipHorizontal,
-  LayoutTemplate,
   Monitor,
   MonitorOff,
-  PictureInPicture2,
-  Sliders,
   Square,
   Wand2,
 } from 'lucide-react';
@@ -119,7 +116,6 @@ export function App() {
   const liveCamVideoRef = useRef<HTMLVideoElement | null>(null);
   const editScreenVideoRef = useRef<HTMLVideoElement | null>(null);
   const editCamVideoRef = useRef<HTMLVideoElement | null>(null);
-  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Main 9:16 composite canvas (1080x1920)
   const compositeCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -726,23 +722,6 @@ export function App() {
     setExportProgress(0);
   };
 
-  // Floating Picture-in-Picture (PiP) Monitor
-  const handleTogglePiP = async () => {
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-        return;
-      }
-      if (!compositeCanvasRef.current || !pipVideoRef.current) return;
-      const stream = compositeCanvasRef.current.captureStream(30);
-      pipVideoRef.current.srcObject = stream;
-      await pipVideoRef.current.play();
-      await pipVideoRef.current.requestPictureInPicture();
-    } catch (err) {
-      console.warn('Picture-in-Picture failed:', err);
-    }
-  };
-
   // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -841,7 +820,6 @@ export function App() {
       {/* Hidden Video Elements for Raw Streams & Playback */}
       <video ref={liveScreenVideoRef} muted playsInline className="hidden" />
       <video ref={liveCamVideoRef} muted playsInline className="hidden" />
-      <video ref={pipVideoRef} muted playsInline className="hidden" />
       {rawScreenUrl && (
         <video
           ref={editScreenVideoRef}
@@ -934,17 +912,8 @@ export function App() {
           </div>
         )}
 
-        {/* Right Action Buttons: Floating PiP & Record Start/Stop */}
+        {/* Right Action Button: Record Start/Stop */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleTogglePiP}
-            className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition cursor-pointer"
-            title="Floating Picture-in-Picture Preview"
-          >
-            <PictureInPicture2 className="w-4 h-4 text-violet-400" />
-          </button>
-
           {mode === 'live' &&
             (!isRecording ? (
               <button
