@@ -146,7 +146,6 @@ function drawScreenIntoRect(
   dw: number,
   dh: number,
   config: SegmentConfig,
-  forceCustomRegion = false,
   borderRadius = 0
 ) {
   ctx.save();
@@ -172,17 +171,14 @@ function drawScreenIntoRect(
     return;
   }
 
-  const useRegion = forceCustomRegion || config.screenFitMode === 'custom-region';
-  const crop: CropRect = useRegion
-    ? config.screenCrop
-    : { x: 0, y: 0, width: 1, height: 1 };
+  const crop: CropRect = config.screenCrop || { x: 0, y: 0, width: 1, height: 1 };
 
   const sx = Math.max(0, Math.min(sw - 1, crop.x * sw));
   const sy = Math.max(0, Math.min(sh - 1, crop.y * sh));
   const sWidth = Math.max(16, Math.min(sw - sx, crop.width * sw));
   const sHeight = Math.max(16, Math.min(sh - sy, crop.height * sh));
 
-  if (config.screenFitMode === 'cover-center' && !forceCustomRegion) {
+  if (config.screenFitMode === 'cover-center') {
     // Fill destination rect completely
     const destAspect = dw / dh;
     const srcAspect = sWidth / sHeight;
@@ -330,7 +326,6 @@ export function renderCompositeFrame(
       innerW,
       bottomH,
       config,
-      config.screenFitMode === 'custom-region',
       cardRadius
     );
 
@@ -363,7 +358,6 @@ export function renderCompositeFrame(
       innerW,
       innerH,
       config,
-      config.screenFitMode === 'custom-region',
       cardRadius
     );
     drawFloatingBubble(ctx, camSource, w, h, config);

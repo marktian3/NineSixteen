@@ -1076,56 +1076,31 @@ export function App() {
                 </div>
               </div>
             )}
-
-            {/* Screen Framing Selector */}
-            <div className="grid grid-cols-3 gap-1 pt-1">
-              {[
-                { id: 'contain-card', label: 'Fit' },
-                { id: 'cover-center', label: 'Fill' },
-                { id: 'custom-region', label: 'Crop' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() =>
-                    updateConfig((c) => ({
-                      ...c,
-                      screenFitMode: opt.id as SegmentConfig['screenFitMode'],
-                    }))
-                  }
-                  className={`py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
-                    currentConfig.screenFitMode === opt.id
-                      ? 'bg-violet-600/25 border-violet-500 text-white'
-                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Screen Box: Starts as 'Enable Screen', transitions to Screen Cropper when enabled */}
-          {(hasScreen && !isDemoActive) || mode === 'edit' ? (
+          {/* Screen Box: Single Source of Truth for Screen Framing & Cropping */}
+          {hasScreen || mode === 'edit' ? (
             <ScreenCropSelector
               screenVideo={
                 mode === 'live' ? liveScreenVideoRef.current : editScreenVideoRef.current
               }
               crop={currentConfig.screenCrop}
-              isActiveRegionMode={currentConfig.screenFitMode === 'custom-region'}
-              onActivateRegionMode={() =>
-                updateConfig((c) => ({
-                  ...c,
-                  screenFitMode: 'custom-region',
-                }))
-              }
-              onChange={(nextCrop: CropRect) =>
+              fitMode={currentConfig.screenFitMode}
+              isDemo={mode === 'live' && isDemoActive}
+              onChangeCrop={(nextCrop: CropRect) =>
                 updateConfig((c) => ({
                   ...c,
                   screenCrop: nextCrop,
                 }))
               }
-              onDisableScreen={mode === 'live' ? handleToggleScreen : undefined}
+              onChangeFitMode={(nextFit) =>
+                updateConfig((c) => ({
+                  ...c,
+                  screenFitMode: nextFit,
+                }))
+              }
+              onConnectRealScreen={mode === 'live' && isDemoActive ? handleToggleScreen : undefined}
+              onDisableScreen={mode === 'live' && !isDemoActive ? handleToggleScreen : undefined}
             />
           ) : (
             <button

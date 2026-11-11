@@ -25,9 +25,9 @@ export interface SegmentConfig {
   bubbleRadius: number;
   bubbleShape: 'circle' | 'rounded';
   bubbleBorderColor: string;
-  /** How the screen/window should be framed inside its area */
-  screenFitMode: 'contain-card' | 'cover-center' | 'custom-region';
-  /** Normalized crop rectangle on the source screen video */
+  /** How the selected screen region should fit inside its destination frame */
+  screenFitMode: 'contain-card' | 'cover-center';
+  /** Normalized crop rectangle on the source screen video (0,0,1,1 = Full screen) */
   screenCrop: CropRect;
   /** Camera zoom (1.0 - 2.5) */
   camZoom: number;
@@ -59,10 +59,10 @@ export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   bubbleBorderColor: '#8b5cf6',
   screenFitMode: 'contain-card',
   screenCrop: {
-    x: 0.08,
-    y: 0.06,
-    width: 0.62,
-    height: 0.88,
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
   },
   camZoom: 1.0,
   camPanX: 0,

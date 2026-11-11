@@ -1,30 +1,45 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CropRect } from '../types';
-import { Crop, Maximize2, PanelBottom, PanelLeft, PanelRight, Smartphone } from 'lucide-react';
+import { CropRect, SegmentConfig } from '../types';
+import { Maximize2, Monitor, PanelBottom, PanelLeft, PanelRight, Smartphone } from 'lucide-react';
 
 interface ScreenCropSelectorProps {
   screenVideo: HTMLVideoElement | null;
   crop: CropRect;
-  onChange: (nextCrop: CropRect) => void;
-  isActiveRegionMode: boolean;
-  onActivateRegionMode?: () => void;
+  fitMode: SegmentConfig['screenFitMode'];
+  isDemo?: boolean;
+  onChangeCrop: (nextCrop: CropRect) => void;
+  onChangeFitMode: (nextFit: SegmentConfig['screenFitMode']) => void;
+  onConnectRealScreen?: () => void;
   onDisableScreen?: () => void;
 }
 
-type DragMode =
-  | null
-  | 'move'
-  | 'nw'
-  | 'ne'
-  | 'sw'
-  | 'se';
+type DragMode = null | 'move' | 'nw' | 'ne' | 'sw' | 'se';
+
+const PRESETS: { label: string; icon: React.FC<{ className?: string }>; rect: CropRect }[] = [
+  { label: 'Full', icon: Maximize2, rect: { x: 0, y: 0, width: 1, height: 1 } },
+  { label: '9:16 Slice', icon: Smartphone, rect: { x: 0.28, y: 0.02, width: 0.44, height: 0.96 } },
+  { label: 'Left IDE', icon: PanelLeft, rect: { x: 0.02, y: 0.04, width: 0.52, height: 0.92 } },
+  { label: 'Right', icon: PanelRight, rect: { x: 0.46, y: 0.04, width: 0.52, height: 0.92 } },
+  { label: 'Terminal', icon: PanelBottom, rect: { x: 0.05, y: 0.42, width: 0.9, height: 0.54 } },
+];
+
+function isSameRect(a: CropRect, b: CropRect): boolean {
+  return (
+    Math.abs(a.x - b.x) < 0.02 &&
+    Math.abs(a.y - b.y) < 0.02 &&
+    Math.abs(a.width - b.width) < 0.02 &&
+    Math.abs(a.height - b.height) < 0.02
+  );
+}
 
 export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
   screenVideo,
   crop,
-  onChange,
-  isActiveRegionMode,
-  onActivateRegionMode,
+  fitMode,
+  isDemo,
+  onChangeCrop,
+  onChangeFitMode,
+  onConnectRealScreen,
   onDisableScreen,
 }) => {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -36,7 +51,6 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
     startCrop: CropRect;
   } | null>(null);
 
-  // Render live miniature preview of the full screen feed
   useEffect(() => {
     let rafId = 0;
     const renderPreview = () => {
@@ -50,29 +64,6 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
           } else {
             ctx.fillStyle = '#18181b';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            // Subtle grid
-            ctx.strokeStyle = '#27272a';
-            ctx.lineWidth = 1;
-            for (let x = 0; x < canvas.width; x += 40) {
-              ctx.beginPath();
-              ctx.moveTo(x, 0);
-              ctx.lineTo(x, canvas.height);
-              ctx.stroke();
-            }
-            for (let y = 0; y < canvas.height; y += 40) {
-              ctx.beginPath();
-              ctx.moveTo(0, y);
-              ctx.lineTo(canvas.width, y);
-              ctx.stroke();
-            }
-            ctx.fillStyle = '#71717a';
-            ctx.font = '500 13px -apple-system, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(
-              'Drag box to choose which portion of your screen to record',
-              canvas.width / 2,
-              canvas.height / 2
-            );
           }
         }
       }
@@ -82,15 +73,9 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [screenVideo]);
 
-  const handlePointerDown = (
-    e: React.PointerEvent<HTMLDivElement>,
-    mode: DragMode
-  ) => {
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>, mode: DragMode) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (onActivateRegionMode && !isActiveRegionMode) {
-      onActivateRegionMode();
-    }
     setDragMode(mode);
     dragStartRef.current = {
       mouseX: e.clientX,
@@ -109,7 +94,7 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
     const s = dragStartRef.current.startCrop;
     const minSize = 0.12;
 
-    let next: CropRect = { ...s };
+    const next: CropRect = { ...s };
 
     if (dragMode === 'move') {
       next.x = Math.max(0, Math.min(1 - s.width, s.x + dx));
@@ -140,7 +125,7 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
       next.height = Math.max(minSize, Math.min(1 - s.y, s.height + dy));
     }
 
-    onChange(next);
+    onChangeCrop(next);
   };
 
   const handlePointerUp = () => {
@@ -148,25 +133,56 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
     dragStartRef.current = null;
   };
 
-  const applyPreset = (preset: CropRect) => {
-    if (onActivateRegionMode && !isActiveRegionMode) {
-      onActivateRegionMode();
-    }
-    onChange(preset);
-  };
-
   return (
-    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Crop className="w-3.5 h-3.5 text-violet-400" />
+    <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
+      {/* Header Row: Title + Fit/Fill Toggle + Share/Off Button */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-xs text-zinc-400">Screen</span>
+          {isDemo && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
+              Demo
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono text-zinc-400">
-            {Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
-          </span>
-          {onDisableScreen && (
+
+        <div className="flex items-center gap-1.5">
+          {/* Fit vs Fill Toggle */}
+          <div className="flex bg-zinc-950 rounded-md p-0.5 border border-zinc-800">
+            {(
+              [
+                { id: 'contain-card', label: 'Fit' },
+                { id: 'cover-center', label: 'Fill' },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => onChangeFitMode(opt.id)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition cursor-pointer ${
+                  fitMode === opt.id
+                    ? 'bg-violet-600/30 text-violet-200'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {isDemo && onConnectRealScreen && (
+            <button
+              type="button"
+              onClick={onConnectRealScreen}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-violet-600/20 hover:bg-violet-600/30 text-violet-200 border border-violet-500/40 transition cursor-pointer"
+              title="Share your real screen or window"
+            >
+              <Monitor className="w-3 h-3" />
+              <span>Share</span>
+            </button>
+          )}
+
+          {!isDemo && onDisableScreen && (
             <button
               type="button"
               onClick={onDisableScreen}
@@ -205,10 +221,10 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
             width: `${crop.width * 100}%`,
             height: `${crop.height * 100}%`,
           }}
-          className="absolute border-2 border-violet-400 bg-violet-500/15 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move group"
+          className="absolute border-2 border-violet-400 bg-violet-500/15 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] cursor-move"
         >
-          {/* Rule of thirds subtle grid inside crop box */}
-          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-40">
+          {/* Subtle rule-of-thirds grid */}
+          <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none opacity-35">
             <div className="border-r border-b border-violet-300/30" />
             <div className="border-r border-b border-violet-300/30" />
             <div className="border-b border-violet-300/30" />
@@ -220,70 +236,44 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
           {/* Corner Resize Handles */}
           <div
             onPointerDown={(e) => handlePointerDown(e, 'nw')}
-            className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-violet-400 rounded-sm border border-zinc-950 cursor-nwse-resize"
+            className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-violet-400 rounded-xs border border-zinc-950 cursor-nwse-resize"
           />
           <div
             onPointerDown={(e) => handlePointerDown(e, 'ne')}
-            className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-violet-400 rounded-sm border border-zinc-950 cursor-nesw-resize"
+            className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-violet-400 rounded-xs border border-zinc-950 cursor-nesw-resize"
           />
           <div
             onPointerDown={(e) => handlePointerDown(e, 'sw')}
-            className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-violet-400 rounded-sm border border-zinc-950 cursor-nesw-resize"
+            className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-violet-400 rounded-xs border border-zinc-950 cursor-nesw-resize"
           />
           <div
             onPointerDown={(e) => handlePointerDown(e, 'se')}
-            className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-violet-400 rounded-sm border border-zinc-950 cursor-nwse-resize"
+            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-violet-400 rounded-xs border border-zinc-950 cursor-nwse-resize"
           />
         </div>
       </div>
 
-      {/* Quick Region Presets */}
-      <div className="grid grid-cols-5 gap-1.5">
-        <button
-          type="button"
-          onClick={() => applyPreset({ x: 0.02, y: 0.04, width: 0.52, height: 0.92 })}
-          className="flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg bg-zinc-800/70 hover:bg-zinc-800 text-[10px] text-zinc-300 border border-zinc-700/50 transition"
-          title="Left Editor Pane"
-        >
-          <PanelLeft className="w-3.5 h-3.5 text-violet-400" />
-          <span>Left IDE</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset({ x: 0.46, y: 0.04, width: 0.52, height: 0.92 })}
-          className="flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg bg-zinc-800/70 hover:bg-zinc-800 text-[10px] text-zinc-300 border border-zinc-700/50 transition"
-          title="Right Split Pane"
-        >
-          <PanelRight className="w-3.5 h-3.5 text-violet-400" />
-          <span>Right</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset({ x: 0.28, y: 0.02, width: 0.44, height: 0.96 })}
-          className="flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg bg-zinc-800/70 hover:bg-zinc-800 text-[10px] text-zinc-300 border border-zinc-700/50 transition"
-          title="Center 9:16 Slice"
-        >
-          <Smartphone className="w-3.5 h-3.5 text-violet-400" />
-          <span>9:16 Slice</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset({ x: 0.05, y: 0.42, width: 0.90, height: 0.54 })}
-          className="flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg bg-zinc-800/70 hover:bg-zinc-800 text-[10px] text-zinc-300 border border-zinc-700/50 transition"
-          title="Bottom Terminal Area"
-        >
-          <PanelBottom className="w-3.5 h-3.5 text-violet-400" />
-          <span>Terminal</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => applyPreset({ x: 0, y: 0, width: 1, height: 1 })}
-          className="flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg bg-zinc-800/70 hover:bg-zinc-800 text-[10px] text-zinc-300 border border-zinc-700/50 transition"
-          title="Full Screen"
-        >
-          <Maximize2 className="w-3.5 h-3.5 text-violet-400" />
-          <span>Full</span>
-        </button>
+      {/* Unified Quick Region Presets */}
+      <div className="grid grid-cols-5 gap-1">
+        {PRESETS.map((p) => {
+          const Icon = p.icon;
+          const active = isSameRect(crop, p.rect);
+          return (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => onChangeCrop(p.rect)}
+              className={`flex flex-col items-center gap-1 py-1.5 px-1 rounded-lg text-[10px] border transition cursor-pointer ${
+                active
+                  ? 'bg-violet-600/25 border-violet-500 text-white'
+                  : 'bg-zinc-950/70 hover:bg-zinc-800 text-zinc-400 border-zinc-800/80'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5 text-violet-400" />
+              <span>{p.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
