@@ -90,6 +90,8 @@ export function App() {
   // Live capture states
   const [hasScreen, setHasScreen] = useState(false);
   const [hasCam, setHasCam] = useState(false);
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCamId, setSelectedCamId] = useState<string>('');
   const [isDemoActive, setIsDemoActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -285,24 +287,40 @@ export function App() {
     }
   };
 
-  // Start/Stop Webcam + Mic
-  const handleToggleCam = async () => {
-    setErrorBanner(null);
-    if (hasCam && !isDemoActive) {
-      camStreamRef.current?.getTracks().forEach((t) => t.stop());
-      camStreamRef.current = null;
-      if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
-      setHasCam(false);
-      return;
-    }
-
+  // Enumerate available video input devices (MacBook FaceTime HD, iPhone Continuity Camera, etc.)
+  const refreshCameraDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
     try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+      setCameraDevices(videoInputs);
+    } catch {
+      // Ignore enumeration errors before permission grant
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCameraDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshCameraDevices);
+    return () => {
+      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshCameraDevices);
+    };
+  }, [refreshCameraDevices]);
+
+  const startCameraStream = async (deviceId?: string) => {
+    setErrorBanner(null);
+    try {
+      const videoConstraints: MediaTrackConstraints = {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 60 },
+      };
+      if (deviceId) {
+        videoConstraints.deviceId = { exact: deviceId };
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 60 },
-        },
+        video: videoConstraints,
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -316,16 +334,37 @@ export function App() {
         if (liveScreenVideoRef.current) liveScreenVideoRef.current.srcObject = null;
       }
 
+      // Stop previous camera stream tracks if switching cameras
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+
       camStreamRef.current = stream;
       if (liveCamVideoRef.current) {
         liveCamVideoRef.current.srcObject = stream;
         await liveCamVideoRef.current.play().catch(() => {});
       }
+
+      const activeDeviceId = stream.getVideoTracks()[0]?.getSettings()?.deviceId || deviceId || '';
+      setSelectedCamId(activeDeviceId);
       setHasCam(true);
+      await refreshCameraDevices();
     } catch (err) {
       console.warn('Webcam selection cancelled or failed:', err);
       setErrorBanner('Could not access camera/microphone. Check browser permissions.');
     }
+  };
+
+  // Start/Stop Webcam + Mic
+  const handleToggleCam = async () => {
+    setErrorBanner(null);
+    if (hasCam && !isDemoActive) {
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      camStreamRef.current = null;
+      if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
+      setHasCam(false);
+      return;
+    }
+
+    await startCameraStream(selectedCamId || undefined);
   };
 
   // Toggle Synthetic Demo Feeds
@@ -1140,6 +1179,24 @@ export function App() {
                 <span>Mirror</span>
               </button>
             </div>
+
+            {cameraDevices.length > 0 && (
+              <select
+                value={selectedCamId}
+                onChange={(e) => {
+                  const nextId = e.target.value;
+                  setSelectedCamId(nextId);
+                  startCameraStream(nextId);
+                }}
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-violet-500"
+              >
+                {cameraDevices.map((dev, idx) => (
+                  <option key={dev.deviceId || idx} value={dev.deviceId}>
+                    {dev.label || `Camera ${idx + 1}`}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div className="space-y-1">
               <div className="flex justify-between text-xs">
