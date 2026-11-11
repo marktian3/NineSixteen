@@ -18,9 +18,7 @@ import {
   CircleDot,
   Download,
   FlipHorizontal,
-  Monitor,
   Square,
-  Wand2,
 } from 'lucide-react';
 
 type StudioMode = 'live' | 'edit';
@@ -85,12 +83,11 @@ export function App() {
   // Active configuration in live mode
   const [liveConfig, setLiveConfig] = useState<SegmentConfig>(DEFAULT_SEGMENT_CONFIG);
 
-  // Live capture states
+  // Live capture states (true when user's real Screen / real Camera is active; falls back to Demo when false)
   const [hasScreen, setHasScreen] = useState(false);
   const [hasCam, setHasCam] = useState(false);
   const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamId, setSelectedCamId] = useState<string>('');
-  const [isDemoActive, setIsDemoActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -195,65 +192,49 @@ export function App() {
     [mode, selectedSegmentId, currentTime, isRecording]
   );
 
-  // Stop demo streams if running
-  const stopDemoIfActive = useCallback(() => {
-    if (demoControllerRef.current) {
-      demoControllerRef.current.stop();
-      demoControllerRef.current = null;
-      setIsDemoActive(false);
+  // Attach demo fallback stream to screen video element
+  const attachDemoScreen = useCallback(() => {
+    const demoScreen = demoControllerRef.current?.screenStream || null;
+    if (liveScreenVideoRef.current && demoScreen) {
+      liveScreenVideoRef.current.srcObject = demoScreen;
+      liveScreenVideoRef.current.play().catch(() => {});
     }
   }, []);
 
-  // Synchronously initialize and play Demo Feeds
-  const activateDemoFeeds = useCallback(() => {
-    if (demoControllerRef.current) {
-      demoControllerRef.current.stop();
-      demoControllerRef.current = null;
+  // Attach demo fallback stream to camera video element
+  const attachDemoCam = useCallback(() => {
+    const demoCam = demoControllerRef.current?.camStream || null;
+    if (liveCamVideoRef.current && demoCam) {
+      liveCamVideoRef.current.srcObject = demoCam;
+      liveCamVideoRef.current.play().catch(() => {});
     }
-    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-    camStreamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
 
+  // Auto-load background demo fallback feeds on mount (StrictMode-safe)
+  useEffect(() => {
     const demo = createDemoStreams();
     demoControllerRef.current = demo;
-    screenStreamRef.current = demo.screenStream;
-    camStreamRef.current = demo.camStream;
 
-    if (liveScreenVideoRef.current) {
+    if (!screenStreamRef.current && liveScreenVideoRef.current) {
       liveScreenVideoRef.current.srcObject = demo.screenStream;
       liveScreenVideoRef.current.play().catch(() => {});
     }
-    if (liveCamVideoRef.current) {
+    if (!camStreamRef.current && liveCamVideoRef.current) {
       liveCamVideoRef.current.srcObject = demo.camStream;
       liveCamVideoRef.current.play().catch(() => {});
     }
 
-    setIsDemoActive(true);
-    setHasScreen(true);
-    setHasCam(true);
-  }, []);
-
-  // Auto-load demo feeds on mount (StrictMode-safe)
-  useEffect(() => {
-    activateDemoFeeds();
     return () => {
-      if (demoControllerRef.current) {
-        demoControllerRef.current.stop();
+      demo.stop();
+      if (demoControllerRef.current === demo) {
         demoControllerRef.current = null;
       }
     };
-  }, [activateDemoFeeds]);
+  }, []);
 
-  // Start/Stop Screen Share
-  const handleToggleScreen = async () => {
+  // Connect or Change Real Screen / Window Share
+  const handleConnectScreen = async () => {
     setErrorBanner(null);
-    if (hasScreen && !isDemoActive) {
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current = null;
-      if (liveScreenVideoRef.current) liveScreenVideoRef.current.srcObject = null;
-      setHasScreen(false);
-      return;
-    }
-
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -262,14 +243,10 @@ export function App() {
         audio: true,
       });
 
-      if (isDemoActive) {
-        stopDemoIfActive();
-        setHasCam(false);
-        camStreamRef.current = null;
-        if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
-      }
-
+      // Stop previous real screen stream if switching windows/screens
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
       screenStreamRef.current = stream;
+
       if (liveScreenVideoRef.current) {
         liveScreenVideoRef.current.srcObject = stream;
         await liveScreenVideoRef.current.play().catch(() => {});
@@ -277,12 +254,22 @@ export function App() {
       setHasScreen(true);
 
       stream.getVideoTracks()[0]?.addEventListener('ended', () => {
-        setHasScreen(false);
         screenStreamRef.current = null;
+        setHasScreen(false);
+        attachDemoScreen();
       });
     } catch (err) {
       console.warn('Screen selection cancelled or failed:', err);
     }
+  };
+
+  // Turn Off Real Screen Share -> automatically fall back to Demo screen
+  const handleDisableScreen = () => {
+    setErrorBanner(null);
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setHasScreen(false);
+    attachDemoScreen();
   };
 
   // Enumerate available video input devices (MacBook FaceTime HD, iPhone Continuity Camera, etc.)
@@ -325,13 +312,6 @@ export function App() {
         },
       });
 
-      if (isDemoActive) {
-        stopDemoIfActive();
-        setHasScreen(false);
-        screenStreamRef.current = null;
-        if (liveScreenVideoRef.current) liveScreenVideoRef.current.srcObject = null;
-      }
-
       // Stop previous camera stream tracks if switching cameras
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
 
@@ -351,35 +331,18 @@ export function App() {
     }
   };
 
-  // Start/Stop Webcam + Mic
+  // Start/Stop Webcam + Mic (falls back to Demo camera when turned Off)
   const handleToggleCam = async () => {
     setErrorBanner(null);
-    if (hasCam && !isDemoActive) {
+    if (hasCam) {
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = null;
-      if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
       setHasCam(false);
+      attachDemoCam();
       return;
     }
 
     await startCameraStream(selectedCamId || undefined);
-  };
-
-  // Toggle Synthetic Demo Feeds
-  const handleToggleDemoFeeds = () => {
-    setErrorBanner(null);
-    if (isDemoActive) {
-      stopDemoIfActive();
-      screenStreamRef.current = null;
-      camStreamRef.current = null;
-      if (liveScreenVideoRef.current) liveScreenVideoRef.current.srcObject = null;
-      if (liveCamVideoRef.current) liveCamVideoRef.current.srcObject = null;
-      setHasScreen(false);
-      setHasCam(false);
-      return;
-    }
-    activateDemoFeeds();
-    setMode('live');
   };
 
   // Main 60fps 9:16 Canvas Render Loop
@@ -396,8 +359,8 @@ export function App() {
               ctx,
               CANVAS_WIDTH,
               CANVAS_HEIGHT,
-              hasScreen ? liveScreenVideoRef.current : null,
-              hasCam ? liveCamVideoRef.current : null,
+              liveScreenVideoRef.current,
+              liveCamVideoRef.current,
               liveConfig
             );
           } else {
@@ -441,10 +404,15 @@ export function App() {
     try {
       setErrorBanner(null);
 
-      // Ensure at least one stream is live; if neither is live, activate demo feeds
-      if (!isStreamLive(screenStreamRef.current) && !isStreamLive(camStreamRef.current)) {
-        activateDemoFeeds();
-      }
+      const activeScreenStream =
+        isStreamLive(screenStreamRef.current) && screenStreamRef.current
+          ? screenStreamRef.current
+          : demoControllerRef.current?.screenStream || null;
+
+      const activeCamStream =
+        isStreamLive(camStreamRef.current) && camStreamRef.current
+          ? camStreamRef.current
+          : demoControllerRef.current?.camStream || null;
 
       const screenChunks: BlobPart[] = [];
       const camChunks: BlobPart[] = [];
@@ -508,8 +476,8 @@ export function App() {
       };
 
       // 1. Raw Screen Track Recorder
-      if (isStreamLive(screenStreamRef.current) && screenStreamRef.current) {
-        const { recorder: sRec, mimeType } = createSafeRecorder(screenStreamRef.current);
+      if (isStreamLive(activeScreenStream) && activeScreenStream) {
+        const { recorder: sRec, mimeType } = createSafeRecorder(activeScreenStream);
         screenMime = mimeType;
         pendingStops += 1;
         sRec.ondataavailable = (e) => {
@@ -521,8 +489,8 @@ export function App() {
       }
 
       // 2. Raw Camera + Mic Track Recorder
-      if (isStreamLive(camStreamRef.current) && camStreamRef.current) {
-        const { recorder: cRec, mimeType } = createSafeRecorder(camStreamRef.current);
+      if (isStreamLive(activeCamStream) && activeCamStream) {
+        const { recorder: cRec, mimeType } = createSafeRecorder(activeCamStream);
         camMime = mimeType;
         pendingStops += 1;
         cRec.ondataavailable = (e) => {
@@ -875,24 +843,8 @@ export function App() {
           <span className="font-semibold text-sm tracking-tight text-white">NineSixteen</span>
         </div>
 
-        {/* Center Capture Source Controls */}
-        {mode === 'live' ? (
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={handleToggleDemoFeeds}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                isDemoActive
-                  ? 'bg-violet-500/20 border-violet-500/50 text-violet-200'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400'
-              }`}
-              title="Toggle simulated demo feeds"
-            >
-              <Wand2 className="w-3.5 h-3.5 text-violet-400" />
-              <span>Demo</span>
-            </button>
-          </div>
-        ) : (
+        {/* Center Capture Source Controls (Edit mode download shortcut) */}
+        {mode === 'edit' ? (
           <div className="flex items-center gap-2">
             {instantCompositeUrl && (
               <a
@@ -905,6 +857,8 @@ export function App() {
               </a>
             )}
           </div>
+        ) : (
+          <div />
         )}
 
         {/* Right Action Button: Record Start/Stop */}
@@ -1078,38 +1032,27 @@ export function App() {
             )}
           </div>
 
-          {/* Screen Box: Single Source of Truth for Screen Framing & Cropping */}
-          {hasScreen || mode === 'edit' ? (
-            <ScreenCropSelector
-              screenVideo={
-                mode === 'live' ? liveScreenVideoRef.current : editScreenVideoRef.current
-              }
-              crop={currentConfig.screenCrop}
-              layout={currentConfig.layout}
-              splitRatio={currentConfig.splitRatio}
-              isDemo={mode === 'live' && isDemoActive}
-              onChangeCrop={(nextCrop: CropRect) =>
-                updateConfig((c) => ({
-                  ...c,
-                  screenCrop: nextCrop,
-                }))
-              }
-              onConnectRealScreen={mode === 'live' && isDemoActive ? handleToggleScreen : undefined}
-              onDisableScreen={mode === 'live' && !isDemoActive ? handleToggleScreen : undefined}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={handleToggleScreen}
-              className="w-full py-8 bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-xl flex flex-col items-center justify-center gap-2 text-zinc-300 hover:text-white transition cursor-pointer"
-            >
-              <Monitor className="w-5 h-5 text-violet-400" />
-              <span className="text-xs font-medium">Enable Screen</span>
-            </button>
-          )}
+          {/* Screen Box: Single Source of Truth for Screen Framing & Cropping (Demo fallback when !hasScreen) */}
+          <ScreenCropSelector
+            screenVideo={
+              mode === 'live' ? liveScreenVideoRef.current : editScreenVideoRef.current
+            }
+            crop={currentConfig.screenCrop}
+            layout={currentConfig.layout}
+            splitRatio={currentConfig.splitRatio}
+            isDemo={mode === 'live' && !hasScreen}
+            onChangeCrop={(nextCrop: CropRect) =>
+              updateConfig((c) => ({
+                ...c,
+                screenCrop: nextCrop,
+              }))
+            }
+            onConnectRealScreen={mode === 'live' ? handleConnectScreen : undefined}
+            onDisableScreen={mode === 'live' && hasScreen ? handleDisableScreen : undefined}
+          />
 
           {/* Camera Box: Starts as 'Enable Camera', transitions to Camera Controls when enabled */}
-          {hasCam && !isDemoActive ? (
+          {hasCam ? (
             <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-zinc-400">Camera</span>

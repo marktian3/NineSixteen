@@ -151,41 +151,41 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
 
   return (
     <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
-      {/* Header Row: Title + Share/Off Button */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+      {/* Top Action / Header Row */}
+      {isDemo && onConnectRealScreen ? (
+        <button
+          type="button"
+          onClick={onConnectRealScreen}
+          className="w-full py-2 px-3 rounded-lg bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/40 text-violet-100 flex items-center justify-center gap-2 text-xs font-medium transition cursor-pointer"
+        >
+          <Monitor className="w-3.5 h-3.5 text-violet-400" />
+          <span>Select Screen / Window</span>
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-zinc-400">Screen</span>
-          {isDemo && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/30">
-              Demo
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {onConnectRealScreen && (
+              <button
+                type="button"
+                onClick={onConnectRealScreen}
+                className="px-2 py-0.5 rounded text-[11px] bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 transition cursor-pointer"
+              >
+                Change
+              </button>
+            )}
+            {onDisableScreen && (
+              <button
+                type="button"
+                onClick={onDisableScreen}
+                className="px-2 py-0.5 rounded text-[11px] bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer"
+              >
+                Off
+              </button>
+            )}
+          </div>
         </div>
-
-        <div className="flex items-center gap-1.5">
-          {isDemo && onConnectRealScreen && (
-            <button
-              type="button"
-              onClick={onConnectRealScreen}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-violet-600/20 hover:bg-violet-600/30 text-violet-200 border border-violet-500/40 transition cursor-pointer"
-              title="Share your real screen or window"
-            >
-              <Monitor className="w-3 h-3" />
-              <span>Share</span>
-            </button>
-          )}
-
-          {!isDemo && onDisableScreen && (
-            <button
-              type="button"
-              onClick={onDisableScreen}
-              className="px-2 py-0.5 rounded text-[11px] bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer"
-            >
-              Off
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Interactive Widescreen Monitor Map */}
       <div
