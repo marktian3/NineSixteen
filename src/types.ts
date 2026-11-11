@@ -25,8 +25,6 @@ export interface SegmentConfig {
   bubbleRadius: number;
   bubbleShape: 'circle' | 'rounded';
   bubbleBorderColor: string;
-  /** How the selected screen region should fit inside its destination frame */
-  screenFitMode: 'contain-card' | 'cover-center';
   /** Normalized crop rectangle on the source screen video (0,0,1,1 = Full screen) */
   screenCrop: CropRect;
   /** Camera zoom (1.0 - 2.5) */
@@ -57,7 +55,6 @@ export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   bubbleRadius: 0.19,
   bubbleShape: 'circle',
   bubbleBorderColor: '#8b5cf6',
-  screenFitMode: 'contain-card',
   screenCrop: {
     x: 0,
     y: 0,

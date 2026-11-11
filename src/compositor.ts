@@ -178,70 +178,53 @@ function drawScreenIntoRect(
   const sWidth = Math.max(16, Math.min(sw - sx, crop.width * sw));
   const sHeight = Math.max(16, Math.min(sh - sy, crop.height * sh));
 
-  if (config.screenFitMode === 'cover-center') {
-    // Fill destination rect completely
-    const destAspect = dw / dh;
-    const srcAspect = sWidth / sHeight;
-    let cw = sWidth;
-    let ch = sHeight;
-    if (srcAspect > destAspect) {
-      cw = sHeight * destAspect;
-    } else {
-      ch = sWidth / destAspect;
-    }
-    const cx = sx + (sWidth - cw) / 2;
-    const cy = sy + (sHeight - ch) / 2;
-    ctx.drawImage(screenSource, cx, cy, cw, ch, dx, dy, dw, dh);
+  // Fit the selected window/region inside destination rect while filling ambient backdrop
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.drawImage(screenSource, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
+  ctx.fillStyle = 'rgba(9, 9, 11, 0.55)';
+  ctx.fillRect(dx, dy, dw, dh);
+  ctx.restore();
+
+  // Calculate aspect-preserving fit inside (dx, dy, dw, dh)
+  const srcAspect = sWidth / sHeight;
+  const destAspect = dw / dh;
+
+  let fitW = dw;
+  let fitH = dh;
+  if (srcAspect > destAspect) {
+    fitH = dw / srcAspect;
   } else {
-    // Fit the selected window/region inside destination rect while filling ambient backdrop
-    // First draw a darkened blurred/scaled ambient fill of the screen
-    ctx.save();
-    ctx.globalAlpha = 0.22;
-    ctx.drawImage(screenSource, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
-    ctx.fillStyle = 'rgba(9, 9, 11, 0.55)';
-    ctx.fillRect(dx, dy, dw, dh);
-    ctx.restore();
-
-    // Calculate aspect-preserving fit inside (dx, dy, dw, dh)
-    const srcAspect = sWidth / sHeight;
-    const destAspect = dw / dh;
-
-    let fitW = dw;
-    let fitH = dh;
-    if (srcAspect > destAspect) {
-      fitH = dw / srcAspect;
-    } else {
-      fitW = dh * srcAspect;
-    }
-
-    const fitX = dx + (dw - fitW) / 2;
-    const fitY = dy + (dh - fitH) / 2;
-
-    // Draw sleek window drop shadow
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-    ctx.shadowBlur = 36;
-    ctx.shadowOffsetY = 12;
-    drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
-    ctx.fillStyle = '#09090b';
-    ctx.fill();
-    ctx.restore();
-
-    // Draw the crisp screen region
-    ctx.save();
-    drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
-    ctx.clip();
-    ctx.drawImage(screenSource, sx, sy, sWidth, sHeight, fitX, fitY, fitW, fitH);
-    ctx.restore();
-
-    // Subtle glass border around fitted window/region
-    ctx.save();
-    drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.restore();
+    fitW = dh * srcAspect;
   }
+
+  const fitX = dx + (dw - fitW) / 2;
+  const fitY = dy + (dh - fitH) / 2;
+
+  // Draw sleek window drop shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+  ctx.shadowBlur = 36;
+  ctx.shadowOffsetY = 12;
+  drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
+  ctx.fillStyle = '#09090b';
+  ctx.fill();
+  ctx.restore();
+
+  // Draw the crisp screen region
+  ctx.save();
+  drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
+  ctx.clip();
+  ctx.drawImage(screenSource, sx, sy, sWidth, sHeight, fitX, fitY, fitW, fitH);
+  ctx.restore();
+
+  // Subtle glass border around fitted window/region
+  ctx.save();
+  drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 
   ctx.restore();
 }

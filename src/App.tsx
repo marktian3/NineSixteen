@@ -1085,18 +1085,13 @@ export function App() {
                 mode === 'live' ? liveScreenVideoRef.current : editScreenVideoRef.current
               }
               crop={currentConfig.screenCrop}
-              fitMode={currentConfig.screenFitMode}
+              layout={currentConfig.layout}
+              splitRatio={currentConfig.splitRatio}
               isDemo={mode === 'live' && isDemoActive}
               onChangeCrop={(nextCrop: CropRect) =>
                 updateConfig((c) => ({
                   ...c,
                   screenCrop: nextCrop,
-                }))
-              }
-              onChangeFitMode={(nextFit) =>
-                updateConfig((c) => ({
-                  ...c,
-                  screenFitMode: nextFit,
                 }))
               }
               onConnectRealScreen={mode === 'live' && isDemoActive ? handleToggleScreen : undefined}
