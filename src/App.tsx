@@ -15,12 +15,10 @@ import { createDemoStreams, DemoStreamsController } from './demoStreams';
 import {
   AlertCircle,
   Camera,
-  CameraOff,
   CircleDot,
   Download,
   FlipHorizontal,
   Monitor,
-  MonitorOff,
   Square,
   Wand2,
 } from 'lucide-react';
@@ -882,40 +880,6 @@ export function App() {
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={handleToggleScreen}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                hasScreen && !isDemoActive
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-              }`}
-            >
-              {hasScreen && !isDemoActive ? (
-                <Monitor className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <MonitorOff className="w-3.5 h-3.5 text-zinc-400" />
-              )}
-              <span>Screen</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleToggleCam}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
-                hasCam && !isDemoActive
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-              }`}
-            >
-              {hasCam && !isDemoActive ? (
-                <Camera className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <CameraOff className="w-3.5 h-3.5 text-zinc-400" />
-              )}
-              <span>Camera</span>
-            </button>
-
-            <button
-              type="button"
               onClick={handleToggleDemoFeeds}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
                 isDemoActive
@@ -1141,101 +1105,133 @@ export function App() {
             </div>
           </div>
 
-          {/* Contextual Screen Region Cropper (Only shown when Crop is active) */}
-          {currentConfig.screenFitMode === 'custom-region' && (
+          {/* Screen Box: Starts as 'Enable Screen', transitions to Screen Cropper when enabled */}
+          {(hasScreen && !isDemoActive) || mode === 'edit' ? (
             <ScreenCropSelector
               screenVideo={
-                mode === 'live'
-                  ? hasScreen
-                    ? liveScreenVideoRef.current
-                    : null
-                  : editScreenVideoRef.current
+                mode === 'live' ? liveScreenVideoRef.current : editScreenVideoRef.current
               }
               crop={currentConfig.screenCrop}
-              isActiveRegionMode={true}
+              isActiveRegionMode={currentConfig.screenFitMode === 'custom-region'}
+              onActivateRegionMode={() =>
+                updateConfig((c) => ({
+                  ...c,
+                  screenFitMode: 'custom-region',
+                }))
+              }
               onChange={(nextCrop: CropRect) =>
                 updateConfig((c) => ({
                   ...c,
                   screenCrop: nextCrop,
                 }))
               }
+              onDisableScreen={mode === 'live' ? handleToggleScreen : undefined}
             />
+          ) : (
+            <button
+              type="button"
+              onClick={handleToggleScreen}
+              className="w-full py-8 bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-xl flex flex-col items-center justify-center gap-2 text-zinc-300 hover:text-white transition cursor-pointer"
+            >
+              <Monitor className="w-5 h-5 text-violet-400" />
+              <span className="text-xs font-medium">Enable Screen</span>
+            </button>
           )}
 
-          {/* Compact Camera & Canvas Controls */}
-          <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-zinc-400">Camera</span>
-              <button
-                type="button"
-                onClick={() => updateConfig((c) => ({ ...c, mirrorCam: !c.mirrorCam }))}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border transition cursor-pointer ${
-                  currentConfig.mirrorCam
-                    ? 'bg-violet-600/20 border-violet-500/50 text-violet-200'
-                    : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                }`}
-              >
-                <FlipHorizontal className="w-3 h-3" />
-                <span>Mirror</span>
-              </button>
-            </div>
-
-            {cameraDevices.length > 0 && (
-              <select
-                value={selectedCamId}
-                onChange={(e) => {
-                  const nextId = e.target.value;
-                  setSelectedCamId(nextId);
-                  startCameraStream(nextId);
-                }}
-                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-violet-500"
-              >
-                {cameraDevices.map((dev, idx) => (
-                  <option key={dev.deviceId || idx} value={dev.deviceId}>
-                    {dev.label || `Camera ${idx + 1}`}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-400">Zoom</span>
-                <span className="font-mono text-zinc-300">
-                  {currentConfig.camZoom.toFixed(1)}×
-                </span>
+          {/* Camera Box: Starts as 'Enable Camera', transitions to Camera Controls when enabled */}
+          {hasCam && !isDemoActive ? (
+            <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Camera</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => updateConfig((c) => ({ ...c, mirrorCam: !c.mirrorCam }))}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border transition cursor-pointer ${
+                      currentConfig.mirrorCam
+                        ? 'bg-violet-600/20 border-violet-500/50 text-violet-200'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    <FlipHorizontal className="w-3 h-3" />
+                    <span>Mirror</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleToggleCam}
+                    className="px-2 py-0.5 rounded text-[11px] bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer"
+                  >
+                    Off
+                  </button>
+                </div>
               </div>
-              <input
-                type="range"
-                min={1.0}
-                max={2.2}
-                step={0.05}
-                value={currentConfig.camZoom}
-                onChange={(e) =>
-                  updateConfig((c) => ({ ...c, camZoom: parseFloat(e.target.value) }))
-                }
-                className="w-full accent-violet-500"
-              />
-            </div>
 
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs">
-                <span className="text-zinc-400">Padding</span>
-                <span className="font-mono text-zinc-300">{currentConfig.canvasPadding}px</span>
+              {cameraDevices.length > 0 && (
+                <select
+                  value={selectedCamId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedCamId(nextId);
+                    startCameraStream(nextId);
+                  }}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-violet-500"
+                >
+                  {cameraDevices.map((dev, idx) => (
+                    <option key={dev.deviceId || idx} value={dev.deviceId}>
+                      {dev.label || `Camera ${idx + 1}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-400">Zoom</span>
+                  <span className="font-mono text-zinc-300">
+                    {currentConfig.camZoom.toFixed(1)}×
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1.0}
+                  max={2.2}
+                  step={0.05}
+                  value={currentConfig.camZoom}
+                  onChange={(e) =>
+                    updateConfig((c) => ({ ...c, camZoom: parseFloat(e.target.value) }))
+                  }
+                  className="w-full accent-violet-500"
+                />
               </div>
-              <input
-                type="range"
-                min={0}
-                max={32}
-                step={2}
-                value={currentConfig.canvasPadding}
-                onChange={(e) =>
-                  updateConfig((c) => ({ ...c, canvasPadding: parseInt(e.target.value, 10) }))
-                }
-                className="w-full accent-violet-500"
-              />
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-400">Padding</span>
+                  <span className="font-mono text-zinc-300">{currentConfig.canvasPadding}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={32}
+                  step={2}
+                  value={currentConfig.canvasPadding}
+                  onChange={(e) =>
+                    updateConfig((c) => ({ ...c, canvasPadding: parseInt(e.target.value, 10) }))
+                  }
+                  className="w-full accent-violet-500"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleToggleCam}
+              className="w-full py-8 bg-zinc-900/70 hover:bg-zinc-900 border border-zinc-800/80 hover:border-zinc-700 rounded-xl flex flex-col items-center justify-center gap-2 text-zinc-300 hover:text-white transition cursor-pointer"
+            >
+              <Camera className="w-5 h-5 text-violet-400" />
+              <span className="text-xs font-medium">Enable Camera</span>
+            </button>
+          )}
         </aside>
 
         {/* Center Stage: Live 9:16 Vertical Canvas Preview */}

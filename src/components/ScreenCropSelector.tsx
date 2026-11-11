@@ -8,6 +8,7 @@ interface ScreenCropSelectorProps {
   onChange: (nextCrop: CropRect) => void;
   isActiveRegionMode: boolean;
   onActivateRegionMode?: () => void;
+  onDisableScreen?: () => void;
 }
 
 type DragMode =
@@ -24,6 +25,7 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
   onChange,
   isActiveRegionMode,
   onActivateRegionMode,
+  onDisableScreen,
 }) => {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -157,14 +159,23 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
     <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-3.5 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Crop className="w-4 h-4 text-violet-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
-            Screen Region Cropper
-          </span>
+          <Crop className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-xs text-zinc-400">Screen</span>
         </div>
-        <span className="text-[11px] font-mono text-zinc-400">
-          {Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-mono text-zinc-400">
+            {Math.round(crop.width * 100)}% × {Math.round(crop.height * 100)}%
+          </span>
+          {onDisableScreen && (
+            <button
+              type="button"
+              onClick={onDisableScreen}
+              className="px-2 py-0.5 rounded text-[11px] bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 transition cursor-pointer"
+            >
+              Off
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Interactive Widescreen Monitor Map */}
