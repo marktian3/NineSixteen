@@ -272,15 +272,40 @@ export function App() {
     attachDemoScreen();
   };
 
-  // Enumerate available video input devices (MacBook FaceTime HD, iPhone Continuity Camera, etc.)
-  const refreshCameraDevices = useCallback(async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
+  // Helper to identify built-in MacBook / FaceTime camera
+  const isBuiltInMacCamera = (label: string) => /macbook|facetime|built-in/i.test(label);
+
+  // Enumerate, deduplicate (e.g. duplicate Continuity Camera entries), and sort MacBook camera first
+  const refreshCameraDevices = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    if (!navigator.mediaDevices?.enumerateDevices) return [];
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
-      setCameraDevices(videoInputs);
+      const rawVideoInputs = devices.filter((d) => d.kind === 'videoinput');
+
+      // Deduplicate cameras that share the exact same label (e.g. duplicate "Mark's iPhone Camera")
+      const seenLabels = new Set<string>();
+      const uniqueInputs: MediaDeviceInfo[] = [];
+      for (const dev of rawVideoInputs) {
+        const normLabel = dev.label.trim().toLowerCase();
+        if (normLabel) {
+          if (seenLabels.has(normLabel)) continue;
+          seenLabels.add(normLabel);
+        }
+        uniqueInputs.push(dev);
+      }
+
+      // Sort so MacBook Pro / FaceTime camera is always first in the dropdown
+      uniqueInputs.sort((a, b) => {
+        const aMac = isBuiltInMacCamera(a.label) ? 0 : 1;
+        const bMac = isBuiltInMacCamera(b.label) ? 0 : 1;
+        return aMac - bMac;
+      });
+
+      setCameraDevices(uniqueInputs);
+      return uniqueInputs;
     } catch {
       // Ignore enumeration errors before permission grant
+      return [];
     }
   }, []);
 
@@ -295,22 +320,47 @@ export function App() {
   const startCameraStream = async (deviceId?: string) => {
     setErrorBanner(null);
     try {
-      const videoConstraints: MediaTrackConstraints = {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 60 },
-      };
-      if (deviceId) {
-        videoConstraints.deviceId = { exact: deviceId };
+      // If no specific deviceId was requested, prefer the MacBook Pro camera if already known
+      let targetDeviceId = deviceId;
+      if (!targetDeviceId) {
+        const existingDevices = await refreshCameraDevices();
+        const macCam = existingDevices.find((d) => isBuiltInMacCamera(d.label));
+        if (macCam?.deviceId) {
+          targetDeviceId = macCam.deviceId;
+        }
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
+      const buildConstraints = (id?: string): MediaStreamConstraints => ({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 60 },
+          ...(id ? { deviceId: { exact: id } } : {}),
+        },
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
         },
       });
+
+      let stream = await navigator.mediaDevices.getUserMedia(buildConstraints(targetDeviceId));
+
+      // Now that permission is granted, refresh labels and check if macOS defaulted to iPhone instead of MacBook
+      const updatedDevices = await refreshCameraDevices();
+      const macCam = updatedDevices.find((d) => isBuiltInMacCamera(d.label));
+      const openedTrackLabel = stream.getVideoTracks()[0]?.label || '';
+
+      if (
+        !deviceId &&
+        macCam?.deviceId &&
+        !isBuiltInMacCamera(openedTrackLabel) &&
+        stream.getVideoTracks()[0]?.getSettings()?.deviceId !== macCam.deviceId
+      ) {
+        // Switch from Continuity Camera to MacBook Pro Camera automatically
+        stream.getTracks().forEach((t) => t.stop());
+        stream = await navigator.mediaDevices.getUserMedia(buildConstraints(macCam.deviceId));
+        targetDeviceId = macCam.deviceId;
+      }
 
       // Stop previous camera stream tracks if switching cameras
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -321,10 +371,20 @@ export function App() {
         await liveCamVideoRef.current.play().catch(() => {});
       }
 
-      const activeDeviceId = stream.getVideoTracks()[0]?.getSettings()?.deviceId || deviceId || '';
-      setSelectedCamId(activeDeviceId);
+      const activeDeviceId =
+        stream.getVideoTracks()[0]?.getSettings()?.deviceId || targetDeviceId || '';
+      // Match to deduplicated dropdown option (by deviceId or label)
+      const matchedDropdownDevice =
+        updatedDevices.find((d) => d.deviceId === activeDeviceId) ||
+        updatedDevices.find(
+          (d) =>
+            d.label &&
+            d.label.trim().toLowerCase() ===
+              (stream.getVideoTracks()[0]?.label || '').trim().toLowerCase()
+        );
+
+      setSelectedCamId(matchedDropdownDevice?.deviceId || activeDeviceId);
       setHasCam(true);
-      await refreshCameraDevices();
     } catch (err) {
       console.warn('Webcam selection cancelled or failed:', err);
       setErrorBanner('Could not access camera/microphone. Check browser permissions.');
@@ -338,11 +398,12 @@ export function App() {
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       camStreamRef.current = null;
       setHasCam(false);
+      setSelectedCamId('');
       attachDemoCam();
       return;
     }
 
-    await startCameraStream(selectedCamId || undefined);
+    await startCameraStream();
   };
 
   // Main 60fps 9:16 Canvas Render Loop
