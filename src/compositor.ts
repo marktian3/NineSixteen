@@ -367,47 +367,5 @@ export function renderCompositeFrame(
       cardRadius
     );
     drawFloatingBubble(ctx, camSource, w, h, config);
-  } else if (config.layout === 'region-focus') {
-    // FORMAT 3: Head + Cropped portion of screen
-    if (config.regionHeadMode === 'split') {
-      const ratio = Math.max(0.15, Math.min(0.65, config.splitRatio || 0.30));
-      const gap = pad > 0 ? Math.max(10, Math.round(pad * 0.75)) : 4;
-      const totalInnerH = h - pad * 2 - gap;
-      const topH = Math.round(totalInnerH * ratio);
-      const bottomH = totalInnerH - topH;
-      const innerW = w - pad * 2;
-
-      drawCameraCover(ctx, camSource, pad, pad, innerW, topH, config, cardRadius);
-
-      const bottomY = pad + topH + gap;
-      drawScreenIntoRect(
-        ctx,
-        screenSource,
-        pad,
-        bottomY,
-        innerW,
-        bottomH,
-        config,
-        true, // Always use custom cropped screen region in Format 3
-        cardRadius
-      );
-
-      if (pad > 0) {
-        ctx.save();
-        ctx.strokeStyle = 'rgba(139, 92, 246, 0.35)';
-        ctx.lineWidth = 2;
-        drawRoundedRectPath(ctx, pad, pad, innerW, topH, cardRadius);
-        ctx.stroke();
-        drawRoundedRectPath(ctx, pad, bottomY, innerW, bottomH, cardRadius);
-        ctx.stroke();
-        ctx.restore();
-      }
-    } else {
-      // Cropped screen portion fills 9:16 + floating head bubble
-      const innerW = w - pad * 2;
-      const innerH = h - pad * 2;
-      drawScreenIntoRect(ctx, screenSource, pad, pad, innerW, innerH, config, true, cardRadius);
-      drawFloatingBubble(ctx, camSource, w, h, config);
-    }
   }
 }

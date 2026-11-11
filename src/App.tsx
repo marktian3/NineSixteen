@@ -732,12 +732,6 @@ export function App() {
         updateConfig((c) => ({ ...c, layout: 'split-top-cam' }));
       } else if (e.key === '2') {
         updateConfig((c) => ({ ...c, layout: 'circle-bubble' }));
-      } else if (e.key === '3') {
-        updateConfig((c) => ({
-          ...c,
-          layout: 'region-focus',
-          screenFitMode: 'custom-region',
-        }));
       } else if (e.key === ' ' && mode === 'edit') {
         e.preventDefault();
         handleTogglePlay();
@@ -758,9 +752,7 @@ export function App() {
     const normX = (e.clientX - rect.left) / rect.width;
     const normY = (e.clientY - rect.top) / rect.height;
 
-    const isBubbleActive =
-      currentConfig.layout === 'circle-bubble' ||
-      (currentConfig.layout === 'region-focus' && currentConfig.regionHeadMode === 'bubble');
+    const isBubbleActive = currentConfig.layout === 'circle-bubble';
 
     if (isBubbleActive) {
       const dx = normX - currentConfig.bubbleX;
@@ -961,13 +953,12 @@ export function App() {
       <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Left Sidebar: Minimal Layout Switcher & Contextual Controls */}
         <aside className="w-80 shrink-0 border-r border-zinc-800/80 bg-zinc-950/60 overflow-y-auto p-4 space-y-4">
-          {/* Segmented 3-Mode Layout Switcher */}
-          <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
+          {/* Segmented 2-Mode Layout Switcher */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
             {(
               [
                 { id: 'split-top-cam', label: 'Split' },
                 { id: 'circle-bubble', label: 'Bubble' },
-                { id: 'region-focus', label: 'Crop' },
               ] as { id: LayoutPreset; label: string }[]
             ).map((tab) => {
               const isActive = currentConfig.layout === tab.id;
@@ -979,8 +970,6 @@ export function App() {
                     updateConfig((c) => ({
                       ...c,
                       layout: tab.id,
-                      screenFitMode:
-                        tab.id === 'region-focus' ? 'custom-region' : c.screenFitMode,
                     }))
                   }
                   className={`py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
@@ -997,38 +986,8 @@ export function App() {
 
           {/* Contextual Layout Controls */}
           <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-xl p-3 space-y-3">
-            {/* Crop Mode: Head Display Style Toggle */}
-            {currentConfig.layout === 'region-focus' && (
-              <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-950 rounded-lg border border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => updateConfig((c) => ({ ...c, regionHeadMode: 'split' }))}
-                  className={`py-1 rounded-md text-xs font-medium transition cursor-pointer ${
-                    currentConfig.regionHeadMode === 'split'
-                      ? 'bg-zinc-800 text-white'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Top Split
-                </button>
-                <button
-                  type="button"
-                  onClick={() => updateConfig((c) => ({ ...c, regionHeadMode: 'bubble' }))}
-                  className={`py-1 rounded-md text-xs font-medium transition cursor-pointer ${
-                    currentConfig.regionHeadMode === 'bubble'
-                      ? 'bg-zinc-800 text-white'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
-                  Bubble
-                </button>
-              </div>
-            )}
-
             {/* Split Ratio Slider */}
-            {(currentConfig.layout === 'split-top-cam' ||
-              (currentConfig.layout === 'region-focus' &&
-                currentConfig.regionHeadMode === 'split')) && (
+            {currentConfig.layout === 'split-top-cam' && (
               <div className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-zinc-400">Split Ratio</span>
@@ -1052,9 +1011,7 @@ export function App() {
             )}
 
             {/* Bubble Controls */}
-            {(currentConfig.layout === 'circle-bubble' ||
-              (currentConfig.layout === 'region-focus' &&
-                currentConfig.regionHeadMode === 'bubble')) && (
+            {currentConfig.layout === 'circle-bubble' && (
               <div className="space-y-2.5">
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs">
@@ -1117,39 +1074,36 @@ export function App() {
               </div>
             )}
 
-            {/* Screen Framing Selector for Split & Bubble */}
-            {currentConfig.layout !== 'region-focus' && (
-              <div className="grid grid-cols-3 gap-1 pt-1">
-                {[
-                  { id: 'contain-card', label: 'Fit' },
-                  { id: 'cover-center', label: 'Fill' },
-                  { id: 'custom-region', label: 'Crop' },
-                ].map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() =>
-                      updateConfig((c) => ({
-                        ...c,
-                        screenFitMode: opt.id as SegmentConfig['screenFitMode'],
-                      }))
-                    }
-                    className={`py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
-                      currentConfig.screenFitMode === opt.id
-                        ? 'bg-violet-600/25 border-violet-500 text-white'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* Screen Framing Selector */}
+            <div className="grid grid-cols-3 gap-1 pt-1">
+              {[
+                { id: 'contain-card', label: 'Fit' },
+                { id: 'cover-center', label: 'Fill' },
+                { id: 'custom-region', label: 'Crop' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() =>
+                    updateConfig((c) => ({
+                      ...c,
+                      screenFitMode: opt.id as SegmentConfig['screenFitMode'],
+                    }))
+                  }
+                  className={`py-1 rounded-md text-[11px] font-medium border transition cursor-pointer ${
+                    currentConfig.screenFitMode === opt.id
+                      ? 'bg-violet-600/25 border-violet-500 text-white'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Contextual Screen Region Cropper (Only shown when cropping is active) */}
-          {(currentConfig.layout === 'region-focus' ||
-            currentConfig.screenFitMode === 'custom-region') && (
+          {/* Contextual Screen Region Cropper (Only shown when Crop is active) */}
+          {currentConfig.screenFitMode === 'custom-region' && (
             <ScreenCropSelector
               screenVideo={
                 mode === 'live'
@@ -1284,8 +1238,6 @@ export function App() {
                       config: {
                         ...s.config,
                         layout,
-                        screenFitMode:
-                          layout === 'region-focus' ? 'custom-region' : s.config.screenFitMode,
                       },
                     }
                   : s

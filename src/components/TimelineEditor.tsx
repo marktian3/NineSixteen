@@ -46,8 +46,6 @@ const SEGMENT_COLORS: Record<LayoutPreset, string> = {
     'bg-violet-600/35 border-violet-400/70 text-violet-100 hover:bg-violet-600/45',
   'circle-bubble':
     'bg-cyan-600/35 border-cyan-400/70 text-cyan-100 hover:bg-cyan-600/45',
-  'region-focus':
-    'bg-emerald-600/35 border-emerald-400/70 text-emerald-100 hover:bg-emerald-600/45',
 };
 
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({
@@ -146,26 +144,24 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
             <span className="text-[11px] text-zinc-400 mr-1">
               Segment ({formatTime(activeSegment.startTime)}–{formatTime(activeSegment.endTime)}):
             </span>
-            {(['split-top-cam', 'circle-bubble', 'region-focus'] as LayoutPreset[]).map(
-              (preset) => {
-                const isSelected = activeSegment.config.layout === preset;
-                return (
-                  <button
-                    key={preset}
-                    type="button"
-                    disabled={isExporting}
-                    onClick={() => onChangeSegmentLayout(activeSegment.id, preset)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                      isSelected
-                        ? 'bg-violet-600 text-white shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-                    }`}
-                  >
-                    {LAYOUT_META[preset].title}
-                  </button>
-                );
-              }
-            )}
+            {(['split-top-cam', 'circle-bubble'] as LayoutPreset[]).map((preset) => {
+              const isSelected = activeSegment.config.layout === preset;
+              return (
+                <button
+                  key={preset}
+                  type="button"
+                  disabled={isExporting}
+                  onClick={() => onChangeSegmentLayout(activeSegment.id, preset)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                    isSelected
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                  }`}
+                >
+                  {LAYOUT_META[preset].title}
+                </button>
+              );
+            })}
           </div>
         )}
 

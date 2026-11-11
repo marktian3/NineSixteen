@@ -1,4 +1,4 @@
-export type LayoutPreset = 'split-top-cam' | 'circle-bubble' | 'region-focus';
+export type LayoutPreset = 'split-top-cam' | 'circle-bubble';
 
 export interface CropRect {
   /** Normalized 0..1 from left of source screen video */
@@ -25,9 +25,7 @@ export interface SegmentConfig {
   bubbleRadius: number;
   bubbleShape: 'circle' | 'rounded';
   bubbleBorderColor: string;
-  /** In Format 3 (region-focus), how should the head camera be displayed? */
-  regionHeadMode: 'split' | 'bubble';
-  /** In Format 1 & 2, how should the screen fit when not using a custom region? */
+  /** How the screen/window should be framed inside its area */
   screenFitMode: 'contain-card' | 'cover-center' | 'custom-region';
   /** Normalized crop rectangle on the source screen video */
   screenCrop: CropRect;
@@ -53,13 +51,12 @@ export interface TimelineSegment {
 
 export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   layout: 'split-top-cam',
-  splitRatio: 0.30, // Format 1: 30% Head on top, 70% Window on bottom
+  splitRatio: 0.30,
   bubbleX: 0.76,
   bubbleY: 0.78,
   bubbleRadius: 0.19,
   bubbleShape: 'circle',
   bubbleBorderColor: '#8b5cf6',
-  regionHeadMode: 'split',
   screenFitMode: 'contain-card',
   screenCrop: {
     x: 0.08,
@@ -75,26 +72,13 @@ export const DEFAULT_SEGMENT_CONFIG: SegmentConfig = {
   backgroundStyle: 'obsidian',
 };
 
-export const LAYOUT_META: Record<
-  LayoutPreset,
-  { title: string; subtitle: string; shortcut: string; badge: string }
-> = {
+export const LAYOUT_META: Record<LayoutPreset, { title: string; shortcut: string }> = {
   'split-top-cam': {
-    title: '30/70 Split Screen',
-    subtitle: 'Head on top 30%, window on bottom 70%',
+    title: 'Split',
     shortcut: '1',
-    badge: 'Format 1',
   },
   'circle-bubble': {
-    title: 'Circular Bubble PiP',
-    subtitle: 'Floating head bubble over full-height window',
+    title: 'Bubble',
     shortcut: '2',
-    badge: 'Format 2',
-  },
-  'region-focus': {
-    title: 'Screen Region + Head',
-    subtitle: 'Record a custom cropped portion of screen + camera',
-    shortcut: '3',
-    badge: 'Format 3',
   },
 };
