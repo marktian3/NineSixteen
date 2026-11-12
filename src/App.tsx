@@ -546,9 +546,9 @@ export function App() {
         setMode('edit');
       };
 
-      // 1. Raw Screen Track Recorder
+      // 1. Raw Screen Track Recorder (8 Mbps, 1000ms staggered timeslice)
       if (isStreamLive(activeScreenStream) && activeScreenStream) {
-        const { recorder: sRec, mimeType } = createSafeRecorder(activeScreenStream, 4_000_000);
+        const { recorder: sRec, mimeType } = createSafeRecorder(activeScreenStream, 8_000_000);
         screenMime = mimeType;
         pendingStops += 1;
         sRec.ondataavailable = (e) => {
@@ -559,20 +559,20 @@ export function App() {
         screenRecorderRef.current = sRec;
       }
 
-      // 2. Raw Camera + Mic Track Recorder
+      // 2. Raw Camera + Mic Track Recorder (4.5 Mbps, 1150ms staggered timeslice)
       if (isStreamLive(activeCamStream) && activeCamStream) {
-        const { recorder: cRec, mimeType } = createSafeRecorder(activeCamStream, 3_500_000);
+        const { recorder: cRec, mimeType } = createSafeRecorder(activeCamStream, 4_500_000);
         camMime = mimeType;
         pendingStops += 1;
         cRec.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) camChunks.push(e.data);
         };
         cRec.onstop = finalizeRecording;
-        cRec.start(1000);
+        cRec.start(1150);
         camRecorderRef.current = cRec;
       }
 
-      // 3. Live Composite 9:16 Canvas Recorder (for instant 0-wait download option)
+      // 3. Live Composite 9:16 Canvas Recorder (8 Mbps, 1300ms staggered timeslice)
       if (compositeCanvasRef.current) {
         const canvasStream = compositeCanvasRef.current.captureStream(30);
         const liveAudioTracks = [
@@ -584,7 +584,7 @@ export function App() {
           canvasStream.addTrack(liveAudioTracks[0]);
         }
 
-        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream, 6_000_000);
+        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream, 8_000_000);
         compMime = mimeType;
         compExt = ext;
         pendingStops += 1;
@@ -596,7 +596,7 @@ export function App() {
           totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
           finalizeRecording();
         };
-        compRec.start(1000);
+        compRec.start(1300);
         compositeRecorderRef.current = compRec;
       }
 
