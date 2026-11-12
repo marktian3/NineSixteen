@@ -895,61 +895,6 @@ export function App() {
       )}
       {rawCamUrl && <video ref={editCamVideoRef} src={rawCamUrl} playsInline className="hidden" />}
 
-      {/* Top Navigation & Capture Bar */}
-      <header className="h-13 shrink-0 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur px-4 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center font-bold text-xs tracking-tighter">
-            9:16
-          </div>
-          <span className="font-semibold text-sm tracking-tight text-white">NineSixteen</span>
-        </div>
-
-        {/* Center Capture Source Controls (Edit mode download shortcut) */}
-        {mode === 'edit' ? (
-          <div className="flex items-center gap-2">
-            {instantCompositeUrl && (
-              <a
-                href={instantCompositeUrl}
-                download={`NineSixteen-LiveCut.${recordedExt}`}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Download Live Cut</span>
-              </a>
-            )}
-          </div>
-        ) : (
-          <div />
-        )}
-
-        {/* Right Action Button: Record Start/Stop */}
-        <div className="flex items-center gap-2">
-          {mode === 'live' &&
-            (!isRecording ? (
-              <button
-                type="button"
-                onClick={handleStartRecording}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/25 transition cursor-pointer"
-              >
-                <CircleDot className="w-3.5 h-3.5 fill-current" />
-                <span>Record</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleStopRecording}
-                className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/40 animate-pulse transition cursor-pointer"
-              >
-                <Square className="w-3 h-3 fill-current" />
-                <span className="font-mono">
-                  {Math.floor(recordingSeconds / 60)}:
-                  {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')}
-                </span>
-              </button>
-            ))}
-        </div>
-      </header>
-
       {/* Error Banner if any */}
       {errorBanner && (
         <div className="bg-rose-950/90 border-b border-rose-800 px-5 py-2 text-xs text-rose-200 flex items-center justify-between">
@@ -969,10 +914,20 @@ export function App() {
 
       {/* Main Workspace Area */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* Left Sidebar: Minimal Layout Switcher & Contextual Controls */}
-        <aside className="w-80 shrink-0 border-r border-zinc-800/80 bg-zinc-950/60 overflow-y-auto p-4 space-y-4">
-          {/* Segmented 2-Mode Layout Switcher */}
-          <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
+        {/* Left Sidebar: Branding, Layout Controls, Sources, and Primary Action */}
+        <aside className="w-80 shrink-0 border-r border-zinc-800/80 bg-zinc-950/60 flex flex-col">
+          {/* Sidebar Brand Header */}
+          <div className="h-13 shrink-0 px-4 border-b border-zinc-800/80 flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center font-bold text-xs tracking-tighter">
+              9:16
+            </div>
+            <span className="font-semibold text-sm tracking-tight text-white">NineSixteen</span>
+          </div>
+
+          {/* Scrollable Controls */}
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            {/* Segmented 2-Mode Layout Switcher */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-900 rounded-xl border border-zinc-800">
             {(
               [
                 { id: 'split-top-cam', label: 'Split' },
@@ -1185,6 +1140,47 @@ export function App() {
               <span className="text-xs font-medium">Enable Camera</span>
             </button>
           )}
+          </div>
+
+          {/* Pinned Sidebar Footer: Primary Record / Stop / Download Action */}
+          <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/80 shrink-0">
+            {mode === 'live' ? (
+              !isRecording ? (
+                <button
+                  type="button"
+                  onClick={handleStartRecording}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/25 flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <CircleDot className="w-4 h-4 fill-current" />
+                  <span>Record</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStopRecording}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg shadow-rose-600/40 animate-pulse flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Stop Recording</span>
+                  <span className="font-mono opacity-90">
+                    ({Math.floor(recordingSeconds / 60)}:
+                    {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')})
+                  </span>
+                </button>
+              )
+            ) : (
+              instantCompositeUrl && (
+                <a
+                  href={instantCompositeUrl}
+                  download={`NineSixteen-LiveCut.${recordedExt}`}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-medium text-xs flex items-center justify-center gap-2 transition"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Download Live Cut</span>
+                </a>
+              )
+            )}
+          </div>
         </aside>
 
         {/* Center Stage: Live 9:16 Vertical Canvas Preview */}
@@ -1192,7 +1188,7 @@ export function App() {
           <div className="absolute w-96 h-96 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
 
           {/* Interactive 9:16 Phone Frame Container */}
-          <div className="relative h-full max-h-[86vh] aspect-[9/16] rounded-[28px] p-2 bg-zinc-900/90 border border-zinc-800 shadow-2xl flex flex-col">
+          <div className="relative h-full max-h-[92vh] aspect-[9/16] rounded-[28px] p-2 bg-zinc-900/90 border border-zinc-800 shadow-2xl flex flex-col">
             <div className="relative w-full h-full rounded-[20px] overflow-hidden bg-black">
               <canvas
                 ref={compositeCanvasRef}
