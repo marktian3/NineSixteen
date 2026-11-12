@@ -178,14 +178,6 @@ function drawScreenIntoRect(
   const sWidth = Math.max(16, Math.min(sw - sx, crop.width * sw));
   const sHeight = Math.max(16, Math.min(sh - sy, crop.height * sh));
 
-  // Fit the selected window/region inside destination rect while filling ambient backdrop
-  ctx.save();
-  ctx.globalAlpha = 0.22;
-  ctx.drawImage(screenSource, sx, sy, sWidth, sHeight, dx, dy, dw, dh);
-  ctx.fillStyle = 'rgba(9, 9, 11, 0.55)';
-  ctx.fillRect(dx, dy, dw, dh);
-  ctx.restore();
-
   // Calculate aspect-preserving fit inside (dx, dy, dw, dh)
   const srcAspect = sWidth / sHeight;
   const destAspect = dw / dh;
@@ -200,16 +192,6 @@ function drawScreenIntoRect(
 
   const fitX = dx + (dw - fitW) / 2;
   const fitY = dy + (dh - fitH) / 2;
-
-  // Draw sleek window drop shadow
-  ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-  ctx.shadowBlur = 36;
-  ctx.shadowOffsetY = 12;
-  drawRoundedRectPath(ctx, fitX, fitY, fitW, fitH, 16);
-  ctx.fillStyle = '#09090b';
-  ctx.fill();
-  ctx.restore();
 
   // Draw the crisp screen region
   ctx.save();
@@ -248,14 +230,12 @@ function drawFloatingBubble(
 
   const cornerRadius = config.bubbleShape === 'circle' ? radiusPx : radiusPx * 0.34;
 
-  // Outer drop shadow
+  // Lightweight outer contrast halo (avoids expensive per-frame CPU shadowBlur)
   ctx.save();
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-  ctx.shadowBlur = 32;
-  ctx.shadowOffsetY = 10;
   drawRoundedRectPath(ctx, bx, by, diameter, diameter, cornerRadius);
-  ctx.fillStyle = '#18181b';
-  ctx.fill();
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.lineWidth = 14;
+  ctx.stroke();
   ctx.restore();
 
   // Camera inside bubble

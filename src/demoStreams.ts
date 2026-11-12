@@ -6,6 +6,7 @@
 export interface DemoStreamsController {
   screenStream: MediaStream;
   camStream: MediaStream;
+  setPaused: (paused: boolean) => void;
   stop: () => void;
 }
 
@@ -219,15 +220,21 @@ export function createDemoStreams(): DemoStreamsController {
     cCtx.fillText('● DEMO WEBCAM FEED', 64, 69);
   };
 
+  let isPaused = false;
   renderTick();
-  const intervalId = window.setInterval(renderTick, 1000 / 30);
+  const intervalId = window.setInterval(() => {
+    if (!isPaused) renderTick();
+  }, 1000 / 24);
 
-  const screenStream = screenCanvas.captureStream(30);
-  const camStream = camCanvas.captureStream(30);
+  const screenStream = screenCanvas.captureStream(24);
+  const camStream = camCanvas.captureStream(24);
 
   return {
     screenStream,
     camStream,
+    setPaused: (paused: boolean) => {
+      isPaused = paused;
+    },
     stop: () => {
       window.clearInterval(intervalId);
       screenStream.getTracks().forEach((t) => t.stop());

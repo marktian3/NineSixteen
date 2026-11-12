@@ -30,23 +30,24 @@ type StudioMode = 'live' | 'edit';
  */
 function createSafeRecorder(
   stream: MediaStream,
-  videoBitsPerSecond = 8_000_000
+  videoBitsPerSecond = 5_000_000
 ): { recorder: MediaRecorder; mimeType: string; ext: string } {
   const hasAudio = stream.getAudioTracks().some((t) => t.readyState === 'live');
 
+  // Prefer hardware-accelerated H.264 (mp4) and fast real-time VP8 over CPU-heavy software VP9
   const candidates = hasAudio
     ? [
-        { mimeType: 'video/webm;codecs=vp9,opus', ext: 'webm' },
-        { mimeType: 'video/webm;codecs=vp8,opus', ext: 'webm' },
         { mimeType: 'video/mp4;codecs=avc1,mp4a.40.2', ext: 'mp4' },
         { mimeType: 'video/mp4', ext: 'mp4' },
+        { mimeType: 'video/webm;codecs=vp8,opus', ext: 'webm' },
+        { mimeType: 'video/webm;codecs=vp9,opus', ext: 'webm' },
         { mimeType: 'video/webm', ext: 'webm' },
       ]
     : [
-        { mimeType: 'video/webm;codecs=vp9', ext: 'webm' },
-        { mimeType: 'video/webm;codecs=vp8', ext: 'webm' },
         { mimeType: 'video/mp4;codecs=avc1', ext: 'mp4' },
         { mimeType: 'video/mp4', ext: 'mp4' },
+        { mimeType: 'video/webm;codecs=vp8', ext: 'webm' },
+        { mimeType: 'video/webm;codecs=vp9', ext: 'webm' },
         { mimeType: 'video/webm', ext: 'webm' },
       ];
 
@@ -406,6 +407,15 @@ export function App() {
     await startCameraStream();
   };
 
+  // Pause synthetic background demo canvas loop whenever both real streams are connected or in edit mode
+  useEffect(() => {
+    demoControllerRef.current?.setPaused(mode === 'edit' || (hasScreen && hasCam));
+  }, [mode, hasScreen, hasCam]);
+
+  // Keep a ref to currentTime so edit-mode renderLoop does not tear down requestAnimationFrame 60x/sec
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+
   // Main 60fps 9:16 Canvas Render Loop
   useEffect(() => {
     let rafId = 0;
@@ -427,7 +437,7 @@ export function App() {
           } else {
             const sVid = editScreenVideoRef.current;
             const cVid = editCamVideoRef.current;
-            const t = sVid?.currentTime || cVid?.currentTime || currentTime;
+            const t = sVid?.currentTime || cVid?.currentTime || currentTimeRef.current;
             const seg =
               segments.find((s) => t >= s.startTime && t <= s.endTime) ||
               segments[segments.length - 1] || {
@@ -449,7 +459,7 @@ export function App() {
 
     rafId = requestAnimationFrame(renderLoop);
     return () => cancelAnimationFrame(rafId);
-  }, [mode, hasScreen, hasCam, liveConfig, segments, currentTime]);
+  }, [mode, hasScreen, hasCam, liveConfig, segments]);
 
   // Recording elapsed timer
   useEffect(() => {
@@ -538,27 +548,27 @@ export function App() {
 
       // 1. Raw Screen Track Recorder
       if (isStreamLive(activeScreenStream) && activeScreenStream) {
-        const { recorder: sRec, mimeType } = createSafeRecorder(activeScreenStream);
+        const { recorder: sRec, mimeType } = createSafeRecorder(activeScreenStream, 4_000_000);
         screenMime = mimeType;
         pendingStops += 1;
         sRec.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) screenChunks.push(e.data);
         };
         sRec.onstop = finalizeRecording;
-        sRec.start(200);
+        sRec.start(1000);
         screenRecorderRef.current = sRec;
       }
 
       // 2. Raw Camera + Mic Track Recorder
       if (isStreamLive(activeCamStream) && activeCamStream) {
-        const { recorder: cRec, mimeType } = createSafeRecorder(activeCamStream);
+        const { recorder: cRec, mimeType } = createSafeRecorder(activeCamStream, 3_500_000);
         camMime = mimeType;
         pendingStops += 1;
         cRec.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) camChunks.push(e.data);
         };
         cRec.onstop = finalizeRecording;
-        cRec.start(200);
+        cRec.start(1000);
         camRecorderRef.current = cRec;
       }
 
@@ -574,7 +584,7 @@ export function App() {
           canvasStream.addTrack(liveAudioTracks[0]);
         }
 
-        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream);
+        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream, 6_000_000);
         compMime = mimeType;
         compExt = ext;
         pendingStops += 1;
@@ -586,7 +596,7 @@ export function App() {
           totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
           finalizeRecording();
         };
-        compRec.start(200);
+        compRec.start(1000);
         compositeRecorderRef.current = compRec;
       }
 
@@ -620,17 +630,27 @@ export function App() {
   useEffect(() => {
     if (mode !== 'edit') return;
     let rafId = 0;
+    let lastStateSync = 0;
 
-    const syncClock = () => {
-      const primary = editScreenVideoRef.current || editCamVideoRef.current;
+    const syncClock = (now: number) => {
+      const sVid = editScreenVideoRef.current;
+      const cVid = editCamVideoRef.current;
+      const primary = sVid || cVid;
       if (primary && !primary.paused) {
         const t = primary.currentTime;
-        setCurrentTime(t);
+        // Keep secondary video track in sync if it drifts by > 80ms
+        if (sVid && cVid && !cVid.paused && Math.abs(sVid.currentTime - cVid.currentTime) > 0.08) {
+          cVid.currentTime = sVid.currentTime;
+        }
+        if (now - lastStateSync >= 50) {
+          lastStateSync = now;
+          setCurrentTime(t);
+        }
         if (t >= trimEnd) {
-          editScreenVideoRef.current?.pause();
-          editCamVideoRef.current?.pause();
-          if (editScreenVideoRef.current) editScreenVideoRef.current.currentTime = trimStart;
-          if (editCamVideoRef.current) editCamVideoRef.current.currentTime = trimStart;
+          sVid?.pause();
+          cVid?.pause();
+          if (sVid) sVid.currentTime = trimStart;
+          if (cVid) cVid.currentTime = trimStart;
           setCurrentTime(trimStart);
           setIsPlaying(false);
         }

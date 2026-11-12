@@ -69,17 +69,21 @@ export const ScreenCropSelector: React.FC<ScreenCropSelectorProps> = ({
 
   useEffect(() => {
     let rafId = 0;
-    const renderPreview = () => {
-      const canvas = previewCanvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          if (screenVideo && screenVideo.videoWidth > 0) {
-            ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
-          } else {
-            ctx.fillStyle = '#18181b';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let lastDraw = 0;
+    const renderPreview = (now: number) => {
+      if (now - lastDraw >= 66) {
+        lastDraw = now;
+        const canvas = previewCanvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (screenVideo && screenVideo.videoWidth > 0) {
+              ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+            } else {
+              ctx.fillStyle = '#18181b';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
           }
         }
       }
