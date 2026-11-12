@@ -453,8 +453,8 @@ export function App() {
           ctx,
           CANVAS_WIDTH,
           CANVAS_HEIGHT,
-          sVid && sVid.readyState >= 2 ? sVid : null,
-          cVid && cVid.readyState >= 2 ? cVid : null,
+          sVid && sVid.videoWidth > 0 ? sVid : null,
+          cVid && cVid.videoWidth > 0 ? cVid : null,
           seg.config
         );
       }
@@ -686,13 +686,9 @@ export function App() {
     const syncClock = (now: number) => {
       const sVid = editScreenVideoRef.current;
       const cVid = editCamVideoRef.current;
-      const primary = sVid || cVid;
+      const primary = cVid || sVid;
       if (primary && !primary.paused) {
         const t = primary.currentTime;
-        // Keep secondary video track in sync if it drifts by > 80ms
-        if (sVid && cVid && !cVid.paused && Math.abs(sVid.currentTime - cVid.currentTime) > 0.08) {
-          cVid.currentTime = sVid.currentTime;
-        }
         if (now - lastStateSync >= 50) {
           lastStateSync = now;
           setCurrentTime(t);
