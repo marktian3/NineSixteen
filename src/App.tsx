@@ -412,54 +412,105 @@ export function App() {
     demoControllerRef.current?.setPaused(mode === 'edit' || (hasScreen && hasCam));
   }, [mode, hasScreen, hasCam]);
 
-  // Keep a ref to currentTime so edit-mode renderLoop does not tear down requestAnimationFrame 60x/sec
+  // Keep refs to liveConfig, segments, and currentTime so UI interactions never restart the render loop
   const currentTimeRef = useRef(currentTime);
   currentTimeRef.current = currentTime;
+  const liveConfigRef = useRef(liveConfig);
+  liveConfigRef.current = liveConfig;
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
 
-  // Main 60fps 9:16 Canvas Render Loop
+  // Main 9:16 Canvas Render Loop (60fps rAF when tab is visible + 30fps Web Worker ticker when tab is backgrounded)
   useEffect(() => {
     let rafId = 0;
 
-    const renderLoop = () => {
+    const drawCurrentFrame = () => {
       const canvas = compositeCanvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          if (mode === 'live') {
-            renderCompositeFrame(
-              ctx,
-              CANVAS_WIDTH,
-              CANVAS_HEIGHT,
-              liveScreenVideoRef.current,
-              liveCamVideoRef.current,
-              liveConfig
-            );
-          } else {
-            const sVid = editScreenVideoRef.current;
-            const cVid = editCamVideoRef.current;
-            const t = sVid?.currentTime || cVid?.currentTime || currentTimeRef.current;
-            const seg =
-              segments.find((s) => t >= s.startTime && t <= s.endTime) ||
-              segments[segments.length - 1] || {
-                config: liveConfig,
-              };
-            renderCompositeFrame(
-              ctx,
-              CANVAS_WIDTH,
-              CANVAS_HEIGHT,
-              sVid && sVid.readyState >= 2 ? sVid : null,
-              cVid && cVid.readyState >= 2 ? cVid : null,
-              seg.config
-            );
-          }
-        }
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      if (mode === 'live') {
+        renderCompositeFrame(
+          ctx,
+          CANVAS_WIDTH,
+          CANVAS_HEIGHT,
+          liveScreenVideoRef.current,
+          liveCamVideoRef.current,
+          liveConfigRef.current
+        );
+      } else {
+        const sVid = editScreenVideoRef.current;
+        const cVid = editCamVideoRef.current;
+        const t = sVid?.currentTime || cVid?.currentTime || currentTimeRef.current;
+        const curSegments = segmentsRef.current;
+        const seg =
+          curSegments.find((s) => t >= s.startTime && t <= s.endTime) ||
+          curSegments[curSegments.length - 1] || {
+            config: liveConfigRef.current,
+          };
+        renderCompositeFrame(
+          ctx,
+          CANVAS_WIDTH,
+          CANVAS_HEIGHT,
+          sVid && sVid.readyState >= 2 ? sVid : null,
+          cVid && cVid.readyState >= 2 ? cVid : null,
+          seg.config
+        );
       }
+    };
+
+    const renderLoop = () => {
+      drawCurrentFrame();
       rafId = requestAnimationFrame(renderLoop);
     };
 
     rafId = requestAnimationFrame(renderLoop);
-    return () => cancelAnimationFrame(rafId);
-  }, [mode, hasScreen, hasCam, liveConfig, segments]);
+
+    // Inline Web Worker ticker so canvas keeps rendering at 30fps when user switches to another browser tab
+    const workerBlob = new Blob(
+      [
+        `let id = null;
+         onmessage = (e) => {
+           if (e.data === 'start') {
+             if (!id) id = setInterval(() => postMessage('tick'), 1000 / 30);
+           } else if (e.data === 'stop') {
+             if (id) { clearInterval(id); id = null; }
+           }
+         };`,
+      ],
+      { type: 'application/javascript' }
+    );
+    const workerUrl = URL.createObjectURL(workerBlob);
+    const bgWorker = new Worker(workerUrl);
+
+    bgWorker.onmessage = () => {
+      if (document.hidden) {
+        drawCurrentFrame();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        bgWorker.postMessage('start');
+      } else {
+        bgWorker.postMessage('stop');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    if (document.hidden) {
+      bgWorker.postMessage('start');
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      bgWorker.postMessage('stop');
+      bgWorker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, [mode]);
 
   // Recording elapsed timer
   useEffect(() => {
