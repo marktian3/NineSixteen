@@ -241,7 +241,7 @@ export function App() {
         video: {
           frameRate: { ideal: 60, max: 60 },
         },
-        audio: true,
+        audio: false,
       });
 
       // Stop previous real screen stream if switching windows/screens
@@ -339,8 +339,9 @@ export function App() {
           ...(id ? { deviceId: { exact: id } } : {}),
         },
         audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         },
       });
 
