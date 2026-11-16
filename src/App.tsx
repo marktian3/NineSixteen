@@ -16,7 +16,6 @@ import {
   AlertCircle,
   Camera,
   CircleDot,
-  Download,
   FlipHorizontal,
   Square,
 } from 'lucide-react';
@@ -96,8 +95,6 @@ export function App() {
   // Post-recording raw track URLs & timeline segments
   const [rawScreenUrl, setRawScreenUrl] = useState<string | null>(null);
   const [rawCamUrl, setRawCamUrl] = useState<string | null>(null);
-  const [instantCompositeUrl, setInstantCompositeUrl] = useState<string | null>(null);
-  const [recordedExt, setRecordedExt] = useState<string>('webm');
 
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
@@ -125,7 +122,6 @@ export function App() {
 
   const screenRecorderRef = useRef<MediaRecorder | null>(null);
   const camRecorderRef = useRef<MediaRecorder | null>(null);
-  const compositeRecorderRef = useRef<MediaRecorder | null>(null);
   const recordStartPerfRef = useRef<number>(0);
   const recordedSegmentsLogRef = useRef<TimelineSegment[]>([]);
 
@@ -524,7 +520,7 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [isRecording]);
 
-  // Start Dual-Track + Live Composite Recording
+  // Start Dual-Track Recording (Raw Screen + Raw Camera/Mic)
   const handleStartRecording = async () => {
     try {
       setErrorBanner(null);
@@ -541,12 +537,9 @@ export function App() {
 
       const screenChunks: BlobPart[] = [];
       const camChunks: BlobPart[] = [];
-      const compositeChunks: BlobPart[] = [];
 
       let screenMime = 'video/webm';
       let camMime = 'video/webm';
-      let compMime = 'video/webm';
-      let compExt = 'webm';
 
       recordStartPerfRef.current = performance.now();
       setRecordingSeconds(0);
@@ -560,12 +553,12 @@ export function App() {
       ];
 
       let pendingStops = 0;
-      let totalDurationSec = 0;
 
       const finalizeRecording = () => {
         pendingStops -= 1;
         if (pendingStops > 0) return;
 
+        const totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
         const finalDuration = Math.max(0.8, totalDurationSec);
         const finalSegments = recordedSegmentsLogRef.current.map((s, idx, arr) =>
           idx === arr.length - 1 ? { ...s, endTime: finalDuration } : s
@@ -585,12 +578,6 @@ export function App() {
           setRawCamUrl(null);
         }
 
-        if (compositeChunks.length > 0) {
-          const compBlob = new Blob(compositeChunks, { type: compMime });
-          setInstantCompositeUrl(URL.createObjectURL(compBlob));
-        }
-
-        setRecordedExt(compExt);
         setDuration(finalDuration);
         setTrimStart(0);
         setTrimEnd(finalDuration);
@@ -626,34 +613,6 @@ export function App() {
         camRecorderRef.current = cRec;
       }
 
-      // 3. Live Composite 9:16 Canvas Recorder (8 Mbps, 1300ms staggered timeslice)
-      if (compositeCanvasRef.current) {
-        const canvasStream = compositeCanvasRef.current.captureStream(30);
-        const liveAudioTracks = [
-          ...(camStreamRef.current?.getAudioTracks() || []),
-          ...(screenStreamRef.current?.getAudioTracks() || []),
-        ].filter((t) => t.readyState === 'live');
-
-        if (liveAudioTracks.length > 0) {
-          canvasStream.addTrack(liveAudioTracks[0]);
-        }
-
-        const { recorder: compRec, mimeType, ext } = createSafeRecorder(canvasStream, 8_000_000);
-        compMime = mimeType;
-        compExt = ext;
-        pendingStops += 1;
-
-        compRec.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) compositeChunks.push(e.data);
-        };
-        compRec.onstop = () => {
-          totalDurationSec = (performance.now() - recordStartPerfRef.current) / 1000;
-          finalizeRecording();
-        };
-        compRec.start(1300);
-        compositeRecorderRef.current = compRec;
-      }
-
       setIsRecording(true);
     } catch (err) {
       console.error('Failed to start recording:', err);
@@ -668,7 +627,7 @@ export function App() {
 
   const handleStopRecording = () => {
     setIsRecording(false);
-    [screenRecorderRef, camRecorderRef, compositeRecorderRef].forEach((ref) => {
+    [screenRecorderRef, camRecorderRef].forEach((ref) => {
       try {
         if (ref.current && ref.current.state !== 'inactive') {
           ref.current.stop();
@@ -1212,10 +1171,10 @@ export function App() {
           )}
           </div>
 
-          {/* Pinned Sidebar Footer: Primary Record / Stop / Download Action */}
-          <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/80 shrink-0">
-            {mode === 'live' ? (
-              !isRecording ? (
+          {/* Pinned Sidebar Footer: Primary Record / Stop Action */}
+          {mode === 'live' && (
+            <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/80 shrink-0">
+              {!isRecording ? (
                 <button
                   type="button"
                   onClick={handleStartRecording}
@@ -1237,20 +1196,9 @@ export function App() {
                     {String(Math.floor(recordingSeconds % 60)).padStart(2, '0')})
                   </span>
                 </button>
-              )
-            ) : (
-              instantCompositeUrl && (
-                <a
-                  href={instantCompositeUrl}
-                  download={`NineSixteen-LiveCut.${recordedExt}`}
-                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 font-medium text-xs flex items-center justify-center gap-2 transition"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Download Live Cut</span>
-                </a>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </aside>
 
         {/* Center Stage: Live 9:16 Vertical Canvas Preview */}
