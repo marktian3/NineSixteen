@@ -513,12 +513,12 @@ export function App() {
     };
   }, [mode]);
 
-  // Recording elapsed timer
+  // Recording elapsed timer (floor to whole seconds so React only re-renders 1x/sec)
   useEffect(() => {
     if (!isRecording) return;
     const interval = window.setInterval(() => {
-      setRecordingSeconds((performance.now() - recordStartPerfRef.current) / 1000);
-    }, 100);
+      setRecordingSeconds(Math.floor((performance.now() - recordStartPerfRef.current) / 1000));
+    }, 500);
     return () => window.clearInterval(interval);
   }, [isRecording]);
 
